@@ -182,3 +182,23 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+
+
+# ----------------------- UMBRIA ADDITION ------------------------
+
+llvm-build-for-polygeist-polymer-polsca/
+llvm-build-for-polygeist-polymer-polsca-installation/
+
+
+polygeist-build-for-polsca/
+polygeist-build-for-polsca-installation/
+
+
+polymer-build-for-polsca
+polymer-build-for-polsca-installation/
+
+
+polsca-build/
+polsca-build-installation/
+
+py3env/
