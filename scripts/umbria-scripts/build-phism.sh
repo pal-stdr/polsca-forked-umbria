@@ -53,6 +53,10 @@ cmake   \
     -DLLVM_DIR="${POLYGEIST_LLVM_BUILD_DIR}/lib/cmake/llvm" \
     -DLLVM_EXTERNAL_LIT="${POLYGEIST_LLVM_BUILD_DIR}/bin/llvm-lit" 
 
+
+
+
+
 # ------------------------- Build and test ---------------------
 
 cmake --build . --target check-phism
