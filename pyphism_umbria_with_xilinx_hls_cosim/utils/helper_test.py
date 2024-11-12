@@ -1,7 +1,7 @@
 import shutil
 import tempfile
 
-import pyphism.utils.helper as helper
+import pyphism_umbria_with_xilinx_hls_cosim.utils.helper as helper
 
 
 def test_find_substr_in_list():

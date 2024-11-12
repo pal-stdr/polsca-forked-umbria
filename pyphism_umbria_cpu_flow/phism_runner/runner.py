@@ -18,8 +18,8 @@ except ImportError:
 
 import colorlog
 
-from pyphism.phism_runner.options import PhismRunnerOptions
-from pyphism.utils import helper
+from pyphism_umbria_cpu_flow.phism_runner.options import PhismRunnerOptions
+from pyphism_umbria_cpu_flow.utils import helper
 
 
 def get_project_root():

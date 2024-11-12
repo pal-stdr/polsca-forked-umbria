@@ -19,10 +19,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-import pyphism.utils.helper as helper
-from pyphism.phism_runner.options import PhismRunnerOptions
-from pyphism.phism_runner.runner import PhismRunner
-from pyphism.polybench.utils import vhdl
+import pyphism_umbria_cpu_flow.utils.helper as helper
+from pyphism_umbria_cpu_flow.phism_runner.options import PhismRunnerOptions
+from pyphism_umbria_cpu_flow.phism_runner.runner import PhismRunner
+from pyphism_umbria_cpu_flow.polybench.utils import vhdl
 
 POLYBENCH_DATASETS = ("MINI", "SMALL", "MEDIUM", "LARGE", "EXTRALARGE")
 POLYBENCH_EXAMPLES = (
@@ -713,19 +713,36 @@ def get_phism_env():
     root_dir = get_project_root()
 
     phism_env = os.environ.copy()
+    # phism_env["PATH"] = ":".join(
+    #     [
+    #         os.path.join(root_dir, "polygeist", "llvm-project", "build", "bin"),
+    #         os.path.join(root_dir, "polygeist", "build", "mlir-clang"),
+    #         os.path.join(root_dir, "polymer", "build", "bin"),
+    #         os.path.join(root_dir, "build", "bin"),
+    #         phism_env["PATH"],
+    #     ]
+    # )
+    # phism_env["LD_LIBRARY_PATH"] = "{}:{}:{}:{}".format(
+    #     os.path.join(root_dir, "polygeist", "llvm-project", "build", "lib"),
+    #     os.path.join(root_dir, "polymer", "build", "pluto", "lib"),
+    #     os.path.join(root_dir, "build", "lib"),
+    #     phism_env["LD_LIBRARY_PATH"],
+    # )
+
+    # Redefined by umbria
     phism_env["PATH"] = ":".join(
-        [
-            os.path.join(root_dir, "polygeist", "llvm-project", "build", "bin"),
-            os.path.join(root_dir, "polygeist", "build", "mlir-clang"),
-            os.path.join(root_dir, "polymer", "build", "bin"),
-            os.path.join(root_dir, "build", "bin"),
-            phism_env["PATH"],
-        ]
+    [
+        os.path.join(root_dir, "llvm-14-src-build-for-polygeist-polymer-polsca", "bin"),
+        os.path.join(root_dir, "polygeist-build-for-polsca", "mlir-clang"),
+        os.path.join(root_dir, "polymer-build-for-polsca", "bin"),
+        os.path.join(root_dir, "polsca-build", "bin"),
+        phism_env["PATH"],
+    ]
     )
     phism_env["LD_LIBRARY_PATH"] = "{}:{}:{}:{}".format(
-        os.path.join(root_dir, "polygeist", "llvm-project", "build", "lib"),
-        os.path.join(root_dir, "polymer", "build", "pluto", "lib"),
-        os.path.join(root_dir, "build", "lib"),
+        os.path.join(root_dir, "llvm-14-src-build-for-polygeist-polymer-polsca", "lib"),
+        os.path.join(root_dir, "polymer-build-for-polsca", "pluto", "lib"),
+        os.path.join(root_dir, "polsca-build", "lib"),
         phism_env["LD_LIBRARY_PATH"],
     )
 
@@ -739,7 +756,9 @@ def get_top_func(src_file):
     )
 
 
-def get_top_func_param_names(src_file, source_dir, llvm_dir=None):
+# Changed by umbria
+# def get_top_func_param_names(src_file, source_dir, llvm_dir=None):
+def get_top_func_param_names(src_file, source_dir, llvm_build_dir=None):
     """From the given C file, we try to extract the top function's parameter list.
     This will be useful for Vitis LLVM rewrite."""
 
@@ -748,8 +767,12 @@ def get_top_func_param_names(src_file, source_dir, llvm_dir=None):
 
     top_func = get_top_func(src_file)
     clang_path = "clang"
-    if llvm_dir:
-        clang_path = os.path.join(llvm_dir, "build", "bin", "clang")
+
+    # Changed by umbria
+    # if llvm_dir:
+    if llvm_build_dir:
+        # clang_path = os.path.join(llvm_dir, "build", "bin", "clang")
+        clang_path = os.path.join(llvm_build_dir, "bin", "clang")
 
     # Get the corresponding AST in JSON.
     proc = subprocess.Popen(
@@ -837,6 +860,16 @@ class PbFlow(PhismRunner):
         self.env = get_phism_env()
         self.root_dir = get_project_root()
         self.work_dir = work_dir
+
+        # Added by Umbria
+        self.llvm_dir = os.path.join(self.root_dir, "polygeist", "llvm")
+        self.llvm_build_dir = os.path.join(self.root_dir, "llvm-14-src-build-for-polygeist-polymer-polsca")
+        self.polygeist_build_dir = os.path.join(self.root_dir, "polygeist-build-for-polsca")
+        self.polymer_build_dir = os.path.join(self.root_dir, "polymer-build-for-polsca")
+        self.polsca_build_dir = os.path.join(self.root_dir, "polsca-build")
+
+
+
         self.cur_file = None
         self.c_source = None
         self.options = options
@@ -966,11 +999,19 @@ class PbFlow(PhismRunner):
                     "-I",
                     os.path.join(self.work_dir, "utilities"),
                     "-I",
+                    # Changed by umbria
+                    # os.path.join(
+                    #     self.root_dir,
+                    #     "polygeist",
+                    #     "llvm-project",
+                    #     "build",
+                    #     "lib",
+                    #     "clang",
+                    #     "14.0.0",
+                    #     "include",
+                    # ),
                     os.path.join(
-                        self.root_dir,
-                        "polygeist",
-                        "llvm-project",
-                        "build",
+                        self.llvm_build_dir,
                         "lib",
                         "clang",
                         "14.0.0",
@@ -1028,11 +1069,19 @@ class PbFlow(PhismRunner):
                     "-D",
                     "POLYBENCH_DUMP_ARRAYS",
                     "-I",
+                    # Changed by umbria
+                    # os.path.join(
+                    #     self.root_dir,
+                    #     "polygeist",
+                    #     "llvm-project",
+                    #     "build",
+                    #     "lib",
+                    #     "clang",
+                    #     "14.0.0",
+                    #     "include",
+                    # ),
                     os.path.join(
-                        self.root_dir,
-                        "polygeist",
-                        "llvm-project",
-                        "build",
+                        self.llvm_build_dir,
                         "lib",
                         "clang",
                         "14.0.0",
@@ -1412,7 +1461,9 @@ class PbFlow(PhismRunner):
         xln_names = get_top_func_param_names(
             self.c_source,
             self.work_dir,
-            llvm_dir=os.path.join(self.root_dir, "polygeist", "llvm-project"),
+            # Changed by umbria
+            # llvm_dir=os.path.join(self.root_dir, "polygeist", "llvm-project"),
+            llvm_build_dir=self.llvm_build_dir
         )
 
         # Whether array partition has been successful.
@@ -1424,13 +1475,17 @@ class PbFlow(PhismRunner):
 
         args = [
             os.path.join(
-                self.root_dir, "polygeist", "llvm-project", "build", "bin", "opt"
+                # Changed by umbria
+                # self.root_dir, "polygeist", "llvm-project", "build", "bin", "opt"
+                self.llvm_build_dir, "bin", "opt"
             ),
             src_file,
             "-S",
             "-enable-new-pm=0",
             '-load "{}"'.format(
-                os.path.join(self.root_dir, "build", "lib", "VhlsLLVMRewriter.so")
+                # Changed by umbria
+                # os.path.join(self.root_dir, "build", "lib", "VhlsLLVMRewriter.so")
+                os.path.join(self.polsca_build_dir, "lib", "VhlsLLVMRewriter.so")
             ),
             "-strip-debug",
             "-select-pointer",
@@ -1480,13 +1535,17 @@ class PbFlow(PhismRunner):
         # Write the TCL for TBGEN.
         args = [
             os.path.join(
-                self.root_dir, "polygeist", "llvm-project", "build", "bin", "opt"
+                # Changed by umbria
+                # self.root_dir, "polygeist", "llvm-project", "build", "bin", "opt"
+                self.llvm_build_dir, "bin", "opt"
             ),
             src_file,
             "-S",
             "-enable-new-pm=0",
             '-load "{}"'.format(
-                os.path.join(self.root_dir, "build", "lib", "VhlsLLVMRewriter.so")
+                # Changed by umbria
+                # os.path.join(self.root_dir, "build", "lib", "VhlsLLVMRewriter.so")
+                os.path.join(self.polsca_build_dir, "lib", "VhlsLLVMRewriter.so")
             ),
             f'-xlntop="{top_func}"',
             "-xlntbgen",

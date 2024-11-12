@@ -1,6 +1,6 @@
 import os
 
-from pyphism.polybench.utils import vhdl
+from pyphism_umbria_emit_c_hls.polybench.utils import vhdl
 
 
 def test_parse_port_definition():

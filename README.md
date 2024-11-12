@@ -47,7 +47,13 @@ deactivate
 ## 3.2.
 
 ```sh
-make test-one-example-with-umbria-with-xilinx-hls
+make test-one-example-with-umbria-with-xilinx-hls-cosim
 
-make test-one-polymer-example-with-umbria-with-xilinx-hls
+make test-one-polymer-example-with-umbria-with-xilinx-hls-cosim
+
+
+
+make test-one-example-emit-c-hls
+
+make test-one-polymer-example-emit-c-hls
 ```

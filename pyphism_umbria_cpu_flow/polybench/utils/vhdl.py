@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from pyphism.utils import helper
+from pyphism_umbria_cpu_flow.utils import helper
 
 
 @dataclass(eq=True, frozen=True)

@@ -17,9 +17,9 @@ from multiprocessing import Pool
 from timeit import default_timer as timer
 from typing import Any, Dict, List, Optional, Tuple
 
-from pyphism.phism_runner.options import PhismRunnerOptions
-from pyphism.phism_runner.runner import PhismRunner
-from pyphism.utils.helper import get_logger, get_project_root, get_timestamp
+from pyphism_umbria_cpu_flow.phism_runner.options import PhismRunnerOptions
+from pyphism_umbria_cpu_flow.phism_runner.runner import PhismRunner
+from pyphism_umbria_cpu_flow.utils.helper import get_logger, get_project_root, get_timestamp
 
 # Default MachSuite examples to run.
 MACHSUITE_EXAMPLES = [

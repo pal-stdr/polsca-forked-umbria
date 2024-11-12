@@ -1,1 +1,1 @@
-from pyphism.polybench import pb_flow
+from pyphism_umbria_cpu_flow.polybench import pb_flow

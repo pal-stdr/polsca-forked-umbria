@@ -67,25 +67,57 @@ clean-phism:
 # --------------------- WITH XILINX HLS COSIM FLOW ---------------------
 
 test-one-example-with-umbria-with-xilinx-hls-cosim:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/single-polygeist-example/umbria-pb-flow.tmp --cosim
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/cosim/single-polygeist-example/umbria-pb-flow.tmp --cosim
 
 
 test-one-polymer-example-with-umbria-with-xilinx-hls-cosim:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -p -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/single-polymer-example/umbria-pb-flow.tmp --cosim
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -p -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/cosim/single-polymer-example/umbria-pb-flow.tmp --cosim
 
 
 # Test array partition
 test-one-polymer-example-ap-active-with-umbria-with-xilinx-hls-cosim:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -p --ap -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/single-polymer-example/umbria-pb-flow.tmp --cosim
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -p --ap -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/cosim/single-polymer-example/umbria-pb-flow.tmp --cosim
 
 
 
 
 # Evaluate polybench (baseline) - need to be used in environment
 test-umbria-polybench-polygeist-with-xilinx-hls-cosim:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -c -j $(th) example/polybench --work-dir ./tmp-umbria/polybench-with-polygeist/umbria-pb-flow.tmp --cosim
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -c -j $(th) example/polybench --work-dir ./tmp-umbria/cosim/polybench-with-polygeist/umbria-pb-flow.tmp --cosim
 
 
 # Evaluate polybench (polymer) - need to be used in environment
 test-umbria-polybench-polymer-with-xilinx-hls-cosim:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -c -p -j $(th) example/polybench --work-dir ./tmp-umbria/polybench-with-polymer/umbria-pb-flow.tmp --cosim
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -c -p -j $(th) example/polybench --work-dir ./tmp-umbria/cosim/polybench-with-polymer/umbria-pb-flow.tmp --cosim
+
+
+
+
+
+
+# --------------------- WITH EMIT C HLS ---------------------
+
+
+test-one-example-emit-c-hls:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-emit-c-hls.py -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/emit-c-hls/single-polygeist-example/umbria-pb-flow.tmp --cosim
+
+
+test-one-polymer-example-emit-c-hls:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-emit-c-hls.py -p -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/emit-c-hls/single-polymer-example/umbria-pb-flow.tmp --cosim
+
+
+# Test array partition (ap = array partition)
+test-one-polymer-example-ap-active-emit-c-hls:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-emit-c-hls.py -p --ap -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/emit-c-hls/single-polymer-example/umbria-pb-flow.tmp --cosim
+
+
+
+
+# Evaluate polybench (baseline) - need to be used in environment
+test-umbria-polybench-polygeist-emit-c-hls:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-emit-c-hls.py -c -j $(th) example/polybench --work-dir ./tmp-umbria/emit-c-hls/polybench-with-polygeist/umbria-pb-flow.tmp --cosim
+
+
+# Evaluate polybench (polymer) - need to be used in environment
+test-umbria-polybench-polymer-emit-c-hls:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-emit-c-hls.py -c -p -j $(th) example/polybench --work-dir ./tmp-umbria/emit-c-hls/polybench-with-polymer/umbria-pb-flow.tmp --cosim
