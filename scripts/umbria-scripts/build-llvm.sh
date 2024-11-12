@@ -23,7 +23,7 @@ POLYGEIST_LLVM_DIR="${POLSCA_ROOT_DIR}/polygeist/llvm-project"
 
 
 # Set your build folder name
-BUILD_FOLDER_NAME="llvm-build-for-polygeist-polymer-polsca"
+BUILD_FOLDER_NAME="llvm-14-src-build-for-polygeist-polymer-polsca"
 INSTALLATION_FOLDER_NAME="${BUILD_FOLDER_NAME}-installation"
 
 

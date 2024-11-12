@@ -548,7 +548,9 @@ static void generateXlnTBTcl(Function &F, StringRef fileName,
            << "add_files -tb " << dummyFileName << "\n"
            << "set_top " << F.getName().str() << "\n"
            << "open_solution -reset solution1\n"
-           << "set_part \"xqzu29dr-ffrf1760-1-i\"\n"
+           // Changed by umbria
+        //    << "set_part \"xqzu29dr-ffrf1760-1-i\"\n"
+           << "set_part \"xczu9eg-ffvb1156-2-e\"\n"
            << "create_clock -period \"100MHz\"\n"
            //  << "config_compile -pipeline_loops 16\n"
            << '\n';

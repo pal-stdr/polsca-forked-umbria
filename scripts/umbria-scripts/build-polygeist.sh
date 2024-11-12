@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # This script installs the Polygeist repository.
+# Core polygeist commit (from this commit, all the adaptation changes are done)- 2e6bb368ff4894993eb2102c1da3389fa18e49ef
 
 set -o errexit
 set -o pipefail
@@ -17,7 +18,7 @@ POLSCA_ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && cd ../
 
 
 # Go to the llvm directory and carry out installation.
-POLYGEIST_LLVM_BUILD_DIR="${POLSCA_ROOT_DIR}/llvm-build-for-polygeist-polymer-polsca"
+POLYGEIST_LLVM_BUILD_DIR="${POLSCA_ROOT_DIR}/llvm-14-src-build-for-polygeist-polymer-polsca"
 
 
 # Set Polymer build folder name

@@ -7,10 +7,6 @@
 [submodule "example/rosetta"]
 	path = example/rosetta
 	url = https://github.com/cornell-zhang/rosetta
-[submodule "polymer"]
-	path = polymer
-	url = https://github.com/pal-stdr/polymer-forked-umbria.git
-	branch = polsca-umbria
 [submodule "polygeist"]
 	path = polygeist
 	url = https://github.com/pal-stdr/polygeist-forked-umbria.git

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # This script installs the Polymer repository.
-# polymer commit- 5d4ec7335606a87a6aead1153adfcb21257e99d3
+# Actual polymer support for polsca is 585dc6f10b77860ec9a0cece22e263ce74753a48 (Oct 21, 2021)
+# polymer commit (Kumasento Polymer src)- 747b4f34cb348eae361b6705f7f5bb0f9997f88a (Dec 1, 2021)
 
 
 set -o errexit
@@ -8,7 +9,7 @@ set -o pipefail
 set -o nounset
 
 echo ""
-echo ">>> Install Polymer for Umbria"
+echo ">>> Build + Install Polymer for Umbria"
 echo ""
 
 
@@ -20,7 +21,11 @@ POLSCA_ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && cd ../
 
 
 # Go to the llvm directory and carry out installation.
-POLYGEIST_LLVM_BUILD_DIR="${POLSCA_ROOT_DIR}/llvm-build-for-polygeist-polymer-polsca"
+POLYGEIST_LLVM_BUILD_DIR="${POLSCA_ROOT_DIR}/llvm-14-src-build-for-polygeist-polymer-polsca"
+
+
+# This is mandatory to satify pluto's "pet-for-pluto" clang dependency.
+PLUTO_LIBCLANG_PREFIX_DIR="${POLSCA_ROOT_DIR}/llvm-9-src-build-for-polymer-pluto-installation"
 
 
 # Set Polymer build folder name
@@ -46,11 +51,12 @@ cmake   \
     -DMLIR_DIR="${POLYGEIST_LLVM_BUILD_DIR}/lib/cmake/mlir" \
     -DLLVM_DIR="${POLYGEIST_LLVM_BUILD_DIR}/lib/cmake/llvm" \
     -DLLVM_EXTERNAL_LIT="${POLYGEIST_LLVM_BUILD_DIR}/bin/llvm-lit" \
+    -DPLUTO_LIBCLANG_PREFIX="${PLUTO_LIBCLANG_PREFIX_DIR}"  \
     -DLLVM_ENABLE_ASSERTIONS=ON
 
 
 # Mandatory for avoiding regression test failure (libosl.so.0 linker error)
-export LD_LIBRARY_PATH="$PWD/pluto/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${BUILD_FOLDER_DIR}/pluto/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 
 # Run build

@@ -4,43 +4,50 @@
 
 
 
-# 1. INSTALL PRE-REQUISITE PACKAGES (`apt-get` packages and `llvm-9`) FOR Polygesit + PLUTO + Polymer
+# 1. INSTALL PRE-REQUISITE PACKAGES (`apt-get` packages) FOR Polygesit + PLUTO + Polymer
 
 - Please read [docs/UMBRIA-DOCS/HOW-TO-UMBRIA/1.SETTING-UP-PREREQUISITES.md](docs/UMBRIA-DOCS/HOW-TO-UMBRIA/1.SETTING-UP-PREREQUISITES.md)
 
 
 
-# 2. CLONE `polsca-forked-umbria`
+
+# 2. Build `llvm-9` (for `pluto` in `polymer`), `llvm-14` (for `polygeist`, `polymer`, `polsca`), `polygeist`, `polymer`, and `polsca`
+
+- Please read [docs/UMBRIA-DOCS/HOW-TO-UMBRIA/2.BUILD-LLVM-POLYGEIST-POLYMER-POLSCA.md](docs/UMBRIA-DOCS/HOW-TO-UMBRIA/2.BUILD-LLVM-POLYGEIST-POLYMER-POLSCA.md)
+
+
+
+
+# 3. How to run
+
+## 3.1. Initiate python env
 
 ```sh
-git clone https://github.com/pal-stdr/polsca-forked-umbria.git
+# Initiate env in polsca root
+virtualenv -p python3 py3env
+
+
+# Activate
+source py3env/bin/activate
+# You will see something like following
+# (py3env) username@pcname:/path/to/polsca-root$
+
+
+
+# Install packages
+pip install -r requirements.txt
+
+
+# Deactivate (if you want)
+# Donot install any packages when it is deactivated
+deactivate
 ```
 
 
-# 3. Recursively load all the submodules
+## 3.2.
 
 ```sh
-# Sync first
-git submodule sync
+make test-one-example-with-umbria-with-xilinx-hls
 
-
-git submodule update --init --recursive
-```
-
-
-# 4. Build the `llvm-project` inside `polygeist` (i.e. `polygeist/llvm-project`)
-
-- **This script will create 2 folders in your project-root: `llvm-build-for-polygeist-polymer-polsca/` & `llvm-build-for-polygeist-polymer-polsca-installation/`**.
-
-```sh
-./scripts/umbria-scripts/build-llvm.sh
-```
-
-
-# 5. Build the `polygeist`
-
-- **This script will create 2 folders in your project-root: `polygeist-build-for-polsca/` & `polygeist-build-for-polsca-installation/`**.
-
-```sh
-./scripts/umbria-scripts/build-polygeist.sh
+make test-one-polymer-example-with-umbria-with-xilinx-hls
 ```

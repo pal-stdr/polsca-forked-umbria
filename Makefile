@@ -1,9 +1,16 @@
 user=$(if $(shell id -u),$(shell id -u),9001)
 group=$(if $(shell id -g),$(shell id -g),1000)
 phism=/workspace
-vhls=/tools/Xilinx/2020.2
-th=1
+
+# Changed for umbria
+# vhls=/tools/Xilinx/2020.2
+# th=1
+# example=2mm
+vhls=/opt/Xilinx/2022.2
+th=20
 example=2mm
+
+
 
 # Build Phism
 build-docker: test-docker
@@ -48,3 +55,37 @@ clean: clean-phism
 
 clean-phism:
 	rm -rf $(phism)/build
+
+
+
+
+
+# ===================== UMBRIA =====================
+
+
+
+# --------------------- WITH XILINX HLS COSIM FLOW ---------------------
+
+test-one-example-with-umbria-with-xilinx-hls-cosim:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/single-polygeist-example/umbria-pb-flow.tmp --cosim
+
+
+test-one-polymer-example-with-umbria-with-xilinx-hls-cosim:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -p -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/single-polymer-example/umbria-pb-flow.tmp --cosim
+
+
+# Test array partition
+test-one-polymer-example-ap-active-with-umbria-with-xilinx-hls-cosim:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -p --ap -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/single-polymer-example/umbria-pb-flow.tmp --cosim
+
+
+
+
+# Evaluate polybench (baseline) - need to be used in environment
+test-umbria-polybench-polygeist-with-xilinx-hls-cosim:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -c -j $(th) example/polybench --work-dir ./tmp-umbria/polybench-with-polygeist/umbria-pb-flow.tmp --cosim
+
+
+# Evaluate polybench (polymer) - need to be used in environment
+test-umbria-polybench-polymer-with-xilinx-hls-cosim:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-flow-with-xilinx-cosim.py -c -p -j $(th) example/polybench --work-dir ./tmp-umbria/polybench-with-polymer/umbria-pb-flow.tmp --cosim

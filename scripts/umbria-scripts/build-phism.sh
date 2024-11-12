@@ -23,7 +23,7 @@ POLSCA_ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && cd ../
 
 
 # Go to the llvm directory and carry out installation.
-POLYGEIST_LLVM_BUILD_DIR="${POLSCA_ROOT_DIR}/llvm-build-for-polygeist-polymer-polsca"
+POLYGEIST_LLVM_BUILD_DIR="${POLSCA_ROOT_DIR}/llvm-14-src-build-for-polygeist-polymer-polsca"
 
 
 # Set Polymer build folder name
@@ -48,10 +48,12 @@ cmake   \
     -B .    \
     -DCMAKE_BUILD_TYPE=DEBUG \
     -DCMAKE_INSTALL_PREFIX="${INSTALLATION_FOLDER_DIR}"  \
-    -DLLVM_ENABLE_ASSERTIONS=ON \
-    -DMLIR_DIR="${POLYGEIST_LLVM_BUILD_DIR}/build/lib/cmake/mlir" \
+    -DCMAKE_C_COMPILER=gcc \
+    -DCMAKE_CXX_COMPILER=g++ \
+    -DMLIR_DIR="${POLYGEIST_LLVM_BUILD_DIR}/lib/cmake/mlir" \
     -DLLVM_DIR="${POLYGEIST_LLVM_BUILD_DIR}/lib/cmake/llvm" \
-    -DLLVM_EXTERNAL_LIT="${POLYGEIST_LLVM_BUILD_DIR}/bin/llvm-lit" 
+    -DLLVM_EXTERNAL_LIT="${POLYGEIST_LLVM_BUILD_DIR}/bin/llvm-lit" \
+	-DLLVM_ENABLE_ASSERTIONS=ON
 
 
 

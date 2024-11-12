@@ -35,7 +35,7 @@
 build/
 
 # Editor
-.vscode/
+# .vscode/
 
 # Temporary output
 /tmp*
@@ -186,12 +186,16 @@ cython_debug/
 
 # ----------------------- UMBRIA ADDITION ------------------------
 
-llvm-build-for-polygeist-polymer-polsca/
-llvm-build-for-polygeist-polymer-polsca-installation/
+llvm-14-src-build-for-polygeist-polymer-polsca/
+llvm-14-src-build-for-polygeist-polymer-polsca-installation/
 
 
 polygeist-build-for-polsca/
 polygeist-build-for-polsca-installation/
+
+
+llvm-9-src-build-for-polymer-pluto/
+llvm-9-src-build-for-polymer-pluto-installation/
 
 
 polymer-build-for-polsca
@@ -201,4 +205,14 @@ polymer-build-for-polsca-installation/
 polsca-build/
 polsca-build-installation/
 
+
+# Python virtual env
 py3env/
+
+
+# VScode Editor
+.vscode/browse.vc.*
+
+
+# Temporary folder created by umbria
+tmp-umbria/
