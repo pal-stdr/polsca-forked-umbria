@@ -11,3 +11,7 @@
 	path = polygeist
 	url = https://github.com/pal-stdr/polygeist-forked-umbria.git
 	branch = polsca-umbria
+[submodule "polymer"]
+	path = polymer
+	url = https://github.com/pal-stdr/polymer-forked-umbria.git
+	branch = polsca-umbria
