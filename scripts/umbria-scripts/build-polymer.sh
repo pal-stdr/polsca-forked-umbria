@@ -48,6 +48,8 @@ cmake   \
     -B .    \
     -DCMAKE_BUILD_TYPE=DEBUG \
     -DCMAKE_INSTALL_PREFIX="${INSTALLATION_FOLDER_DIR}"  \
+	-DCMAKE_C_COMPILER=gcc \
+    -DCMAKE_CXX_COMPILER=g++ \
     -DMLIR_DIR="${POLYGEIST_LLVM_BUILD_DIR}/lib/cmake/mlir" \
     -DLLVM_DIR="${POLYGEIST_LLVM_BUILD_DIR}/lib/cmake/llvm" \
     -DLLVM_EXTERNAL_LIT="${POLYGEIST_LLVM_BUILD_DIR}/bin/llvm-lit" \

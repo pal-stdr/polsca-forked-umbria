@@ -20,7 +20,9 @@
                 "${myIncludePath}",
                 "${env:LLVM_PROJECT_ROOT}/include",
                 "${workspaceFolder}/include",
-                "${workspaceFolder}/lib/mlir/Transforms"
+                "${workspaceFolder}/lib/mlir/Transforms",
+                "${workspaceFolder}/polsca-build/include",
+                "${workspaceFolder}/example/polybench/utilities"
             ],
             "defines": ["${myDefines}"],
             "cStandard": "gnu17",
@@ -36,7 +38,11 @@
             "browse": {
                 "path": [
                     "${myIncludePath}",
-                    "${workspaceFolder}/include/"
+                    "${env:LLVM_PROJECT_ROOT}/include",
+                    "${workspaceFolder}/include",
+                    "${workspaceFolder}/lib/mlir/Transforms",
+                    "${workspaceFolder}/polsca-build/include",
+                    "${workspaceFolder}/example/polybench/utilities"
                 ],
                 "limitSymbolsToIncludedHeaders": true,
                 "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db"

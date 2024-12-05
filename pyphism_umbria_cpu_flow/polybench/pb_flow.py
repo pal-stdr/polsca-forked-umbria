@@ -17,6 +17,9 @@ from multiprocessing import Pool
 from timeit import default_timer as timer
 from typing import Any, Dict, List, Optional, Tuple
 
+import re
+import tempfile
+
 import pandas as pd
 
 import pyphism_umbria_cpu_flow.utils.helper as helper
@@ -34,10 +37,10 @@ POLYBENCH_EXAMPLES = (
     "cholesky",
     "correlation",
     "covariance",
-    "deriche",
-    "doitgen",
+    "deriche",  # Compile problem
+    "doitgen",  # Result problem
     "durbin",
-    "fdtd-2d",
+    "fdtd-2d",  # Result problem
     "floyd-warshall",
     "gemm",
     "gemver",
@@ -45,13 +48,13 @@ POLYBENCH_EXAMPLES = (
     "gramschmidt",
     "heat-3d",
     "jacobi-1d",
-    "jacobi-2d",
+    "jacobi-2d",  # Result problem
     "lu",
     "ludcmp",
     "mvt",
-    "nussinov",
+    "nussinov",  # Compile problem
     "seidel-2d",
-    "symm",
+    "symm",  # Result problem
     "syr2k",
     "syrk",
     "trisolv",
@@ -368,6 +371,27 @@ def filter_success(df):
 
 
 # ----------------------- Data processing ---------------------------
+
+def filter_result(result_file):
+
+    # Read the content of the file
+    with open(result_file, "r") as file:
+        content = file.read()
+    
+    # Use regex to extract all numbers (integers and floats)
+    # result_list = re.findall(r"\d+\.\d+|\d+", content)
+    result_content = re.findall(r"[-+]?\d*\.\d+|\d+", content)
+
+    # Convert to int if no decimal point, else float
+    result_list = [int(num) if '.' not in num else float(num) for num in result_content]
+
+    # # Print the first 5 numbers
+    # print(result_list[:10])
+
+    # # Print the last 10 numbers
+    # print(result_list[-10:])
+
+    return result_list
 
 
 def expand_resource_field(field):
@@ -736,13 +760,16 @@ def get_phism_env():
         os.path.join(root_dir, "polygeist-build-for-polsca", "mlir-clang"),
         os.path.join(root_dir, "polymer-build-for-polsca", "bin"),
         os.path.join(root_dir, "polsca-build", "bin"),
+        os.path.join(root_dir, "papi-7-1-0-t-installation", "bin"),
         phism_env["PATH"],
     ]
     )
-    phism_env["LD_LIBRARY_PATH"] = "{}:{}:{}:{}".format(
+    phism_env["LD_LIBRARY_PATH"] = "{}:{}:{}:{}:{}".format(
         os.path.join(root_dir, "llvm-14-src-build-for-polygeist-polymer-polsca", "lib"),
         os.path.join(root_dir, "polymer-build-for-polsca", "pluto", "lib"),
         os.path.join(root_dir, "polsca-build", "lib"),
+        os.path.join(root_dir, "papi-7-1-0-t-installation", "lib"),
+
         phism_env["LD_LIBRARY_PATH"],
     )
 
@@ -803,51 +830,7 @@ def get_top_func_param_names(src_file, source_dir, llvm_build_dir=None):
     return [decl["name"] for decl in parm_var_decls]
 
 
-PHISM_VITIS_TCL = """
-open_project -reset proj
-add_files {dummy_src}
-set_top {top_func}
 
-open_solution -reset solution1
-set_part "xqzu29dr-ffrf1760-1-i"
-create_clock -period "100MHz"
-config_compile -pipeline_loops 1
-{config}
-
-set ::LLVM_CUSTOM_CMD {{$LLVM_CUSTOM_OPT -no-warn {src_file} -o $LLVM_CUSTOM_OUTPUT}}
-
-csynth_design
-# export_design -flow syn -rtl vhdl -format ip_catalog
-exit
-"""
-
-TBGEN_VITIS_TCL = """
-open_project -reset tb
-add_files {{{src_dir}/{src_base}.c}} -cflags "-I {src_dir} -I {work_dir}/utilities -D {pb_dataset}_DATASET" -csimflags "-I {src_dir} -I {work_dir}/utilities -D{pb_dataset}_DATASET"
-add_files -tb {{{src_dir}/{src_base}.c {work_dir}/utilities/polybench.c}} -cflags "-I {src_dir} -I {work_dir}/utilities -D{pb_dataset}_DATASET" -csimflags "-I {src_dir} -I {work_dir}/utilities -D{pb_dataset}_DATASET"
-set_top {top_func}
-
-open_solution -reset solution1
-set_part "xqzu29dr-ffrf1760-1-i"
-create_clock -period "100MHz"
-{config}
-
-csim_design
-csynth_design
-cosim_design -rtl vhdl 
-
-exit
-"""
-
-COSIM_VITIS_TCL = """
-open_project tb
-
-open_solution solution1
-
-cosim_design -rtl vhdl 
-
-exit
-"""
 
 
 class PbFlow(PhismRunner):
@@ -867,6 +850,7 @@ class PbFlow(PhismRunner):
         self.polygeist_build_dir = os.path.join(self.root_dir, "polygeist-build-for-polsca")
         self.polymer_build_dir = os.path.join(self.root_dir, "polymer-build-for-polsca")
         self.polsca_build_dir = os.path.join(self.root_dir, "polsca-build")
+        self.papi_installation_dir = os.path.join(self.root_dir, "papi-7-1-0-t-installation")
 
 
 
@@ -907,32 +891,45 @@ class PbFlow(PhismRunner):
         # The whole flow
         try:
             (
-                self.generate_tile_sizes()
-                .dump_test_data()
-                .compile_c()
+                self.generate_tile_sizes()  # Doesn't work
+                # .dump_test_data()
+                .dump_test_data_for_cpu()
+                # .compile_c()
+                .compile_c_for_cpu()   # If sanity_check==True, "-D POLYBENCH_TIME" deactivated
                 .preprocess()
                 .sanity_check()
-                .split_statements()
-                .extract_top_func()
-                .polymer_opt()
+                # .split_statements()   # It doesn't work
+                # .extract_top_func() # It is doing scop_decomp inside
+                .extract_top_func_for_cpu() # if self.options.keep_only_kernel_no_main_in_mlir==True, it is going to remove main() from MLIR code
+                .scop_decomp_for_cpu() # if self.options.loop_transforms==True, it will be activated
                 .sanity_check()
-                .constant_args()
-                .sanity_check()
-                .loop_transforms()
-                .sanity_check()
-                .array_partition()
-                .sanity_check(no_diff=True)
-                .scop_stmt_inline()
-                .sanity_check(no_diff=True)
-                .lower_scf()
-                .lower_llvm()
-                .vitis_opt()
-                .write_tb_tcl_by_llvm()
-                # .run_vitis_on_phism()
-                .run_vitis()
-                # .backup_csim_results()
-                # .copy_design_from_phism_to_tb()
-                # .run_cosim()
+                # .polymer_opt()
+                .polymer_opt_for_cpu()
+                # .sanity_check()     # From here to onwards, sanity_check will fail because of polymer-opt. The dumped array numbers get multi-lined print
+                .constant_args()    # transforms the mlir #map for affine dimension
+                # .sanity_check()
+                # .loop_transforms()
+                .loop_transforms_for_cpu()
+                # .sanity_check()
+                # .array_partition()
+                # .sanity_check(no_diff=True)
+                .scop_stmt_inline()      # if self.options.loop_transforms==True, then this will be deactivated
+                .mlir_opt_chain_for_cpu()
+                # .sanity_check()
+                .translate_mlir_to_llvmir_for_cpu()
+                .compile_bin_for_cpu()
+                .run_bin_on_cpu()
+                .verify_benchmark_result()
+                # .sanity_check(no_diff=True)
+                # .lower_scf()
+                # .lower_llvm()
+                # .vitis_opt()
+                # .write_tb_tcl_by_llvm()
+                # # Default deactivated # .run_vitis_on_phism()
+                # .run_vitis()
+                # # Default deactivated # .backup_csim_results()
+                # # Default deactivated # .copy_design_from_phism_to_tb()
+                # # Default deactivated # .run_cosim()
             )
         except Exception as e:
             self.status = 1
@@ -975,6 +972,47 @@ class PbFlow(PhismRunner):
             subprocess.check_output(["which", program], env=self.env), "utf-8"
         ).strip()
 
+    def prep_polybench_c_macro_compile_flags(self):
+
+        # if self.options.sanity_check is not True:
+        #     return f"-D {self.options.dataset}_DATASET -D POLYBENCH_TIME -D POLYBENCH_PAPI -I {os.path.join(self.papi_installation_dir, 'include')} -L {os.path.join(self.papi_installation_dir, 'lib')} -lpapi"
+        # else:
+        #     return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS"
+
+        # Base flags
+        flags = [
+            ""
+        ]
+
+        # If sanity check is enabled
+        if self.options.sanity_check or self.options.verify_benchmark_result:
+            # Turn off the papi
+            self.options.enable_papi = False
+
+            # Use MINI dataset by default, or SMALL if explicitly specified
+            dataset = self.options.dataset if self.options.dataset in ("MINI", "SMALL", "MEDIUM", "LARGE") else "MINI"
+            flags += [f"-D {dataset}_DATASET", "-D POLYBENCH_DUMP_ARRAYS"]
+        else:
+            flags += [f"-D {self.options.dataset}_DATASET"]
+        
+        # If papi is enabled (papi needs "-D POLYBENCH_TIME") (If sanity_check is enabled, it will automatically deactivate the papi)
+        if self.options.enable_papi:
+            flags += ["-D POLYBENCH_PAPI", "-D POLYBENCH_TIME", f"-I {os.path.join(self.papi_installation_dir, 'include')}", f"-L {os.path.join(self.papi_installation_dir, 'lib')}", "-lpapi"]
+
+        # (sanity_check or verify_results or enable_papi) if any one of them is eanabled, donot add "-D POLYBENCH_TIME"
+        if self.options.sanity_check or self.options.verify_benchmark_result or self.options.enable_papi:
+            pass
+        else:
+            if "-D POLYBENCH_TIME" not in flags:
+                flags += ["-D POLYBENCH_TIME"]
+        
+        # print(flags)
+
+        # Join flags into a single string
+        return " ".join(flags)
+
+        
+    
     def get_golden_out_file(self) -> str:
         path = os.path.basename(self.cur_file)
         return os.path.join(
@@ -1010,6 +1048,57 @@ class PbFlow(PhismRunner):
                     #     "14.0.0",
                     #     "include",
                     # ),
+                    os.path.join(
+                        self.llvm_build_dir,
+                        "lib",
+                        "clang",
+                        "14.0.0",
+                        "include",
+                    ),
+                    "-lm",
+                    self.cur_file,
+                    os.path.join(self.work_dir, "utilities", "polybench.c"),
+                    "-o",
+                    exe_file,
+                ]
+            ),
+            shell=True,
+            env=self.env,
+        )
+        self.run_command(
+            cmd=exe_file,
+            stderr=open(out_file, "w"),
+            env=self.env,
+        )
+
+        return self
+
+    def dump_test_data_for_cpu(self):
+        """Compile and dump test data for result verification."""
+
+        # If there are no main() in mlir, it is useless to run it for cpu and verify the result
+        if self.options.keep_only_kernel_no_main_in_mlir is True:
+            return self
+
+        if not self.options.dump_test_data_cpu:
+            return self
+
+        # With papi activated, we will only do the performance test
+        if self.options.enable_papi is True:
+            return self
+
+
+        out_file = self.get_golden_out_file()
+        exe_file = self.cur_file.replace(".c", ".exe")
+        self.run_command(
+            cmd=" ".join(
+                [
+                    self.get_program_abspath("clang"),
+                    # if self.options.sanity_check==True: then return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS", else "-D {self.options.dataset}_DATASET -D POLYBENCH_TIME"
+                    self.prep_polybench_c_macro_compile_flags(),
+                    "-I",
+                    os.path.join(self.work_dir, "utilities"),
+                    "-I",
                     os.path.join(
                         self.llvm_build_dir,
                         "lib",
@@ -1097,6 +1186,41 @@ class PbFlow(PhismRunner):
         )
         return self
 
+    def compile_c_for_cpu(self):
+        """Compile C code to MLIR using mlir-clang. If the --sanity-check is true, then it will not be called. Because '-D POLYBENCH_TIME' will be activated for production compile to measure time. '-D POLYBENCH_TIME' make the sanity check to fail."""
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(".c", ".mlir")
+
+        self.run_command(cmd=f'sed -i "s/static//g" {src_file}', shell=True)
+        self.run_command(
+            cmd=" ".join(
+                [
+                    self.get_program_abspath("mlir-clang"),
+                    src_file,
+                    "-memref-fullrank",
+                    "-raise-scf-to-affine",
+                    "-S",
+                    "-O0",
+                    # prepare flags (e.g. "-D {}_DATASET", "-D POLYBENCH_DUMP_ARRAYS", "-D POLYBENCH_PAPI", "-D POLYBENCH_TIME") based on condition "sanity_check", "verify_benchmark_result", "enable_papi"
+                    self.prep_polybench_c_macro_compile_flags(),
+                    "-I",
+                    os.path.join(
+                        self.llvm_build_dir,
+                        "lib",
+                        "clang",
+                        "14.0.0",
+                        "include",
+                    ),
+                    "-I",
+                    os.path.join(self.work_dir, "utilities"),
+                ]
+            ),
+            stdout=open(self.cur_file, "w"),
+            shell=True,
+            env=self.env,
+        )
+        return self
+
     def sanity_check(self, no_diff=False):
         """Sanity check the current file."""
         if not self.options.sanity_check:
@@ -1139,7 +1263,7 @@ class PbFlow(PhismRunner):
             )
 
         return self
-
+    
     def preprocess(self):
         """Do some preprocessing before extracting the top function."""
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
@@ -1206,6 +1330,86 @@ class PbFlow(PhismRunner):
             src_file,
             f'-extract-top-func="name={get_top_func(src_file)} keepall={self.options.sanity_check}"',
             "-scop-decomp" if self.options.loop_transforms else "",
+            "-debug",
+        ]
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+        return self
+
+    def extract_top_func_for_cpu(self):
+        """Extract the top function and all the stuff it calls. 'keep_only_kernel_no_main_in_mlir' option is very important. Because if it is false, then "main()" is going to be removed from the MLIR code, and you cannot test with CPU flow."""
+
+        if self.options.keep_only_kernel_no_main_in_mlir is True:
+            keep_all = False
+        else:
+            keep_all = True
+
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".ex-top-func.mlir"
+        )
+
+        log_file = self.cur_file.replace(".mlir", ".log")
+        args = [
+            self.get_program_abspath("phism-opt"),
+            src_file,
+            f'-extract-top-func="name={get_top_func(src_file)} keepall={keep_all}"',
+            "-debug",
+        ]
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+        return self
+
+    def extract_top_func_and_scop_decomp_for_cpu(self):
+        """Extract the top function and all the stuff it calls. 'keep_main_func_in_mlir' option is very important. Because if it is false, then main() is going to be removed from the MLIR code, and you cannot test with CPU flow."""
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".ex-top-func.sd.mlir"
+        )
+
+        log_file = self.cur_file.replace(".mlir", ".log")
+        args = [
+            self.get_program_abspath("phism-opt"),
+            src_file,
+            f'-extract-top-func="name={get_top_func(src_file)} keepall={self.options.keep_main_func_in_mlir}"',
+            "-scop-decomp" if self.options.loop_transforms else "",
+            "-debug",
+        ]
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+        return self
+
+    def scop_decomp_for_cpu(self):
+        """Extract the top function and all the stuff it calls. 'keep_main_func_in_mlir' option is very important. Because if it is false, then main() is going to be removed from the MLIR code, and you cannot test with CPU flow."""
+
+        if self.options.loop_transforms is not True:
+            return self
+
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".sd.mlir"
+        )
+
+        log_file = self.cur_file.replace(".mlir", ".log")
+        args = [
+            self.get_program_abspath("phism-opt"),
+            src_file,
+            "-scop-decomp",
             "-debug",
         ]
         self.run_command(
@@ -1778,6 +1982,411 @@ class PbFlow(PhismRunner):
 
         return self
 
+    def scop_decomposition_for_cpu(self):
+        """Extract the top function and all the stuff it calls."""
+        if not self.options.loop_transforms:
+            return self
+        
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".sd-kern.mlir"
+        )
+
+        log_file = self.cur_file.replace(".mlir", ".log")
+        args = [
+            self.get_program_abspath("phism-opt"),
+            src_file,
+            # f'-extract-top-func="name={get_top_func(src_file)} keepall={self.options.sanity_check}"',
+            # "-scop-decomp" if self.options.loop_transforms else "",
+            "-scop-decomp",
+            "-debug",
+        ]
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+        return self
+
+    def loop_transforms_for_cpu(self):
+        """Run Phism loop transforms."""
+        if not self.options.loop_transforms:
+            return self
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".lt.mlir"
+        )
+        log_file = self.cur_file.replace(".mlir", ".log")
+
+        args = [
+            self.get_program_abspath("phism-opt"),
+            src_file,
+            # f'-loop-transforms="max-span={self.options.max_span}"',
+            "-inline-scop-affine",
+            "-affine-loop-unswitching",
+            "-anno-point-loop",
+            # "-outline-proc-elem='no-ignored'",    # This will activate all separate "PE_"
+            "-loop-redis-and-merge",
+            "-scop-stmt-inline",
+            # "-fold-if" if self.options.coalescing else "",
+            # "-demote-bound-to-if" if self.options.coalescing else "",
+            # "-fold-if",
+            "-debug-only=loop-transforms",
+        ]
+
+        args = self.filter_disabled(args)
+
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+
+        return self
+
+    def polymer_opt_for_cpu(self):
+        """Run polymer optimization."""
+        if not self.options.polymer:
+            return self
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".plmr.mlir"
+        )
+        pluto_clast_file = self.cur_file.replace(".mlir", ".cloog")
+        log_file = self.cur_file.replace(".mlir", ".log")
+
+        passes = [
+            # f"-annotate-scop='functions={get_top_func(src_file)}'",
+            "-fold-scf-if",
+        ]
+        if self.options.split == "NO_SPLIT":  # The split stmt has applied -reg2mem
+            passes += [
+                "-reg2mem",
+            ]
+
+        diamond_tiling = "diamond_tiling"
+        if not self.options.diamond_tiling:
+            diamond_tiling = ""
+        passes += [
+            "-extract-scop-stmt",
+            f'-pluto-opt="dump-clast-after-pluto={pluto_clast_file} cloogf={self.options.cloogf} cloogl={self.options.cloogl} {diamond_tiling}"',
+            "-debug",
+        ]
+
+        self.run_command(
+            cmd=" ".join(
+                [
+                    self.get_program_abspath("polymer-opt"),
+                    src_file,
+                ]
+                + passes
+            ),
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            # stdout=open(pluto_clast_file, "w"),
+            shell=True,
+            env=self.env,
+        )
+
+        return self
+
+    def mlir_opt_chain_for_cpu(self):
+        """mlir-opt CHAIN for CPU."""
+        
+        # If there is no main() in mlir, it is useless to further transform it for cpu
+        if self.options.keep_only_kernel_no_main_in_mlir is True:
+            return self
+        
+
+        assert self.cur_file.endswith(".mlir"), "Should be an MLIR file."
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".ml-opt.mlir"
+        )
+        log_file = self.cur_file.replace(".mlir", ".log")
+
+        args = [
+            self.get_program_abspath("mlir-opt"),
+            src_file,
+            "-convert-math-to-llvm",
+            "-lower-affine",
+            "-convert-scf-to-std",
+            "-convert-memref-to-llvm",
+            "-convert-std-to-llvm",
+            "-convert-arith-to-llvm",
+            "-reconcile-unrealized-casts"
+        ]
+
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+
+        return self
+
+    def translate_mlir_to_llvmir_for_cpu(self):
+        """mlir-opt CHAIN for CPU."""
+
+        # If there is no main() in mlir, it is useless to further transform it for cpu
+        if self.options.keep_only_kernel_no_main_in_mlir is True:
+            return self
+
+        assert self.cur_file.endswith(".mlir"), "Should be an MLIR file."
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".translate.mlir.ll"
+        )
+        log_file = self.cur_file.replace(".ll", ".log")
+
+        args = [
+            self.get_program_abspath("mlir-translate"),
+            src_file,
+            "--mlir-to-llvmir"
+            "|",
+            self.get_program_abspath("opt"),
+            "-S",
+            "-O3",
+            (
+                "--disable-loop-unrolling"
+                if self.options.clang_no_opt_bin is True
+                else ""
+            )
+
+        ]
+
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+        return self
+    
+    def compile_bin_for_cpu(self):
+        """Compile bin for CPU."""
+
+        # If there are no main() in mlir, it is useless to further compile it for cpu
+        if self.options.keep_only_kernel_no_main_in_mlir is True:
+            return self
+
+        assert self.cur_file.endswith(".ll"), "Should be an mlir (i.e. *.ll) file."
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".ll",
+            (
+                ".no-clang-opt.exe"
+                if self.options.clang_no_opt_bin is True
+                else ".clang-opt.exe"
+            )
+        )
+
+        log_file = self.cur_file.replace(".ll", ".log")
+        
+        self.run_command(
+            cmd=" ".join(
+                [
+                    self.get_program_abspath("clang"),
+                    "-O3",
+                    src_file,
+                    os.path.join(
+                        self.work_dir, "utilities", "polybench.c"
+                    ),
+                    # if self.options.sanity_check==True: then return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS", else "-D {self.options.dataset}_DATASET -D POLYBENCH_TIME"
+                    self.prep_polybench_c_macro_compile_flags(),
+                    "-I",
+                    os.path.join(
+                        self.llvm_build_dir,
+                        "lib",
+                        "clang",
+                        "14.0.0",
+                        "include",
+                    ),
+                    "-I",
+                    os.path.join(self.work_dir, "utilities"),
+                    (
+                        "-fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize"
+                        if self.options.clang_no_opt_bin is True
+                        else ""
+                    ),
+                    "-lm",
+                    "-lc",
+                    "-o",
+                    self.cur_file
+                ]
+            ),
+            stdout=open(self.cur_file, "w"),
+            stderr=open(log_file, "w"),
+            shell=True,
+            env=self.env,
+        )
+        return self    
+    
+    def run_bin_on_cpu(self, force_skip=False):
+        """Run the 'cpu.exe' file. Assuming the 'cpu.exe' file has been generated/compiled."""
+
+        # If there are no main() in mlir, it is useless to run it for cpu
+        if self.options.keep_only_kernel_no_main_in_mlir is True:
+            return self
+
+        if not self.options.run_bin_on_cpu:
+            return self
+
+        assert self.cur_file.endswith(".exe"), "Should be a cpu exe (i.e. *.exe) file."
+        
+        cpu_bin_file = self.cur_file
+        base_dir = os.path.dirname(cpu_bin_file)
+        
+        log_file = os.path.join(base_dir, "cpu-exe.stdout.log")
+        if os.path.isfile(log_file):
+            os.remove(log_file)
+
+        self.run_command(
+            # cmd_list=["papi_command_line", "--debug", "PAPI_REF_CYC", "PAPI_TOT_CYC", f".{cpu_bin_file}"],
+            cmd=" ".join(
+                [
+                    # f"{cpu_bin_file}"
+                    # "papi_command_line", "--debug", "PAPI_REF_CYC", "PAPI_TOT_CYC", f".{cpu_bin_file}"
+                    (
+                        f"papi_command_line --debug PAPI_REF_CYC PAPI_TOT_CYC .{cpu_bin_file}"
+                        if self.options.enable_papi is True
+                        else f"{cpu_bin_file}"
+                    ),
+                ]
+            ),
+            stdout=open(log_file, "w"),
+            stderr=open(os.path.join(base_dir, "cpu-exe.stderr.log"), "w"), # dumped arrays are out through stderr
+            shell=True,
+            env=self.env
+        )
+        return self
+
+    def verify_benchmark_result(self, no_diff=False):
+        """Verify the result with *.golden.out."""
+
+        # If there are no main() in mlir, it is useless to run it for cpu and verify the result
+        if self.options.keep_only_kernel_no_main_in_mlir is True:
+            return self
+
+        if not self.options.verify_benchmark_result:
+            return self
+
+        assert self.cur_file.endswith(".exe"), "Should be an exe file."
+
+        # Collect golden.out file
+        cpu_bin_file_name = os.path.basename(self.cur_file)
+        cpu_bin_file_dir = os.path.dirname(self.cur_file)
+        cpu_bin_file_path = os.path.join(cpu_bin_file_dir, cpu_bin_file_name)
+        golden_result_filename = cpu_bin_file_name.split(".")[0] + ".golden.out"
+        golden_result_file_path = os.path.join(cpu_bin_file_dir, golden_result_filename)
+
+        kernel_name = cpu_bin_file_name.split(".")[0]
+
+        result_out_file = self.cur_file.replace(".exe", ".out")
+
+        self.run_command(
+            shell=True,
+            cmd_list=[cpu_bin_file_path],
+            # stdout=open(log_file, "w"),
+            stderr=open(result_out_file, "w"),
+            env=self.env,
+            
+        )
+
+        # Collect the results as python list
+        golden_result_list = filter_result(golden_result_file_path)
+        bin_result_list = filter_result(result_out_file)
+
+        # # Deliberately create error
+        # bin_result_list.pop(5)
+
+
+        # Prepare .diff file to be written
+        result_diff_file = result_out_file.replace(".out", ".diff")
+
+        # Compare 2 lists
+        # Success
+        if golden_result_list == bin_result_list:
+            print(f"Result matches for kernel {kernel_name}!!!!!!!!!!!!!!!!!")
+            with open(result_diff_file, "w") as diff:
+                diff.write("Results match!.\n")
+                diff.close()
+        else:
+            print(f"Result Doesn't matches for kernel {kernel_name}!!!!!! Please Check ", result_diff_file)
+            # Prepare placeholders for summary and detailed differences
+            summary = []
+            details = []
+            mismatched_indices = []
+            differences = []
+
+            # Generate details and collect mismatched data
+            if len(golden_result_list) != len(bin_result_list):
+                summary.append(f"Golden & {kernel_name} results have different lengths.")
+                summary.append(f"Golden list length: {len(golden_result_list)}")
+                summary.append(f"{kernel_name} list length: {len(bin_result_list)}")
+
+                # Extra elements in longer list
+                if len(golden_result_list) > len(bin_result_list):
+                    summary.append("Extra elements in golden_result_list:")
+                    summary.append(f"{golden_result_list[len(bin_result_list):]}")
+                else:
+                    summary.append("Extra elements in bin_result_list:")
+                    summary.append(f"{bin_result_list[len(golden_result_list):]}")
+
+                # Write the summary first, then the details
+                with open(result_diff_file, "w") as diff:
+                    diff.write("\n".join(summary) + "\n")
+                    diff.close()
+
+            # Find mismatched indices and calculate differences
+            for i, (golden, bin_res) in enumerate(zip(golden_result_list, bin_result_list)):
+                if golden != bin_res:
+                    is_mismatch_found = True
+                    mismatched_indices.append(i)
+                    differences.append(abs(golden - bin_res))
+                    details.append(f"Index {i}: Golden -> {golden}, {kernel_name} -> {bin_res}")
+
+            if is_mismatch_found:
+                # Calculate the number of mismatched cells and average difference
+                mismatched_count = len(mismatched_indices)
+                avg_difference = sum(differences) / mismatched_count if mismatched_count > 0 else 0
+
+                # Prepare the summary
+                summary.append(f"Result mismatched for kernel {kernel_name}!!!!")
+                summary.append(f"Num of mismatched cells: {mismatched_count} among total {len(golden_result_list)}")
+                summary.append(f"Average difference of mismatched values: {avg_difference:.6f}")
+
+                # Write the summary first, then the details
+                with open(result_diff_file, "w") as diff:
+                    diff.write("\n".join(summary) + "\n")
+                    diff.write("Differences found at the following indices:\n")
+                    diff.write("\n".join(details) + "\n")
+                    diff.close()
+
+        
+        # Open the result_diff_file in read mode to collect the contents in a variable
+        with open(result_diff_file, "r") as diff_file:
+            file_content = diff_file.read()
+            diff_file.close()
+
+
+        self.run_command(
+            shell=True,
+            text=True,   # Treat input/output as text
+            cmd_list=["tee", result_diff_file],  # Replace with your desired command
+            stdout=subprocess.PIPE,     # Optional: Capture `tee` output (not needed here)
+            stderr=subprocess.PIPE,     # Optional: Capture errors
+            input=file_content,  # Pass file content directly, it will not work with stdin
+            env=self.env,
+        )
+
+        return self
 
 def pb_flow_process(d: str, work_dir: str, options: PbFlowOptions):
     """Process a single example."""

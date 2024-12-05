@@ -5,6 +5,19 @@
 
     "cmake.configureOnOpen": false,
     
+    "git.ignoredRepositories": [
+        "${workspaceFolder}/polygeist",
+        "${workspaceFolder}/polygeist/llvm-project",
+        "${workspaceFolder}/polymer",
+        "${workspaceFolder}/polymer/pluto",
+        "${workspaceFolder}/polymer/llvm-9-src-for-polymer-pluto",
+        "${workspaceFolder}/example/machsuite",
+        "${workspaceFolder}/example/polybench",
+        "${workspaceFolder}/example/rosetta",
+        "${workspaceFolder}/papi",
+        "${workspaceFolder}/papi-7-1-0-t-installation"
+    ],
+    
     "files.watcherExclude": {
         "**/.git/objects/**": true,
         "**/.git/subtree-cache/**": true,
@@ -38,7 +51,10 @@
         "*.md": "markdown",
         "*.ac": "m4",
         "*.am": "makefile",
-        "*.json": "json"
+        "*.json": "json",
+        "*.inc": "cpp",
+        "*.mlir": "mlir",
+        "*.ll": "llvm",
     },
     "[c]": {
         "editor.insertSpaces": true,
@@ -71,6 +87,16 @@
         "editor.tabSize": 4
     },
     "[json]": {
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "editor.tabSize": 4
+    },
+    "[mlir]": {
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "editor.tabSize": 4
+    },
+    "[llvm]": {
         "editor.insertSpaces": true,
         "editor.detectIndentation": false,
         "editor.tabSize": 4

@@ -15,3 +15,6 @@
 	path = polymer
 	url = https://github.com/pal-stdr/polymer-forked-umbria.git
 	branch = polsca-umbria
+[submodule "papi"]
+	path = papi
+	url = https://github.com/icl-utk-edu/papi.git

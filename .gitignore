@@ -216,3 +216,7 @@ py3env/
 
 # Temporary folder created by umbria
 tmp-umbria/
+
+
+# Ignore papi
+papi-7-1-0-t-installation/

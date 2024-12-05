@@ -8,7 +8,8 @@ phism=/workspace
 # example=2mm
 vhls=/opt/Xilinx/2022.2
 th=20
-example=2mm
+# example=2mm
+example=correlation
 
 
 
@@ -121,3 +122,48 @@ test-umbria-polybench-polygeist-emit-c-hls:
 # Evaluate polybench (polymer) - need to be used in environment
 test-umbria-polybench-polymer-emit-c-hls:
 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-emit-c-hls.py -c -p -j $(th) example/polybench --work-dir ./tmp-umbria/emit-c-hls/polybench-with-polymer/umbria-pb-flow.tmp --cosim
+
+
+
+
+
+
+
+# --------------------- UMBRIA CPU FLOW ---------------------
+
+
+test-one-example-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-cpu-flow.py -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/umbria-cpu-flow/single-polygeist-example/umbria-pb-flow.tmp
+
+
+verify-one-polymer-example-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-cpu-flow.py -p ./example/polybench -e $(example) --work-dir ./tmp-umbria/umbria-cpu-flow/verify-single-polymer-example/umbria-pb-flow.tmp --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=SMALL --sanity-check --verify-benchmark-result
+
+
+test-one-polymer-example-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-cpu-flow.py -p ./example/polybench -e $(example) --work-dir ./tmp-umbria/umbria-cpu-flow/single-polymer-example/umbria-pb-flow.tmp --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=SMALL
+
+
+verify-polybench-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-cpu-flow.py -p ./example/polybench --work-dir ./tmp-umbria/umbria-cpu-flow/verify-polybench-with-polymer-example/umbria-pb-flow.tmp --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --verify-benchmark-result --dataset=MINI --excl symm doitgen fdtd-2d jacobi-2d deriche nussinov
+
+
+test-polybench-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-cpu-flow.py -p ./example/polybench --work-dir ./tmp-umbria/umbria-cpu-flow/polybench-with-polymer-example/umbria-pb-flow.tmp --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=LARGE --excl symm doitgen fdtd-2d jacobi-2d deriche nussinov
+
+
+# Test array partition (ap = array partition)
+test-one-polymer-example-ap-active-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-cpu-flow.py -p --ap -j $(th) ./example/polybench -e $(example) --work-dir ./tmp-umbria/umbria-cpu-flow/single-polymer-example/umbria-pb-flow.tmp
+
+
+
+
+# Evaluate polybench (baseline) - need to be used in environment
+test-umbria-polybench-polygeist-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-cpu-flow.py -c -j $(th) example/polybench --work-dir ./tmp-umbria/umbria-cpu-flow/polybench-with-polygeist/umbria-pb-flow.tmp
+
+
+# Evaluate polybench (polymer) - need to be used in environment
+test-umbria-polybench-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-cpu-flow.py -c -p -j $(th) example/polybench --work-dir ./tmp-umbria/umbria-cpu-flow/polybench-with-polymer/umbria-pb-flow.tmp

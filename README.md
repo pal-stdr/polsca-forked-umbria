@@ -56,4 +56,7 @@ make test-one-polymer-example-with-umbria-with-xilinx-hls-cosim
 make test-one-example-emit-c-hls
 
 make test-one-polymer-example-emit-c-hls
+
+make test-one-example-umbria-cpu-flow
+make test-one-polymer-example-umbria-cpu-flow
 ```
