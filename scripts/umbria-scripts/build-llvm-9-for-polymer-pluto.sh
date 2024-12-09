@@ -43,9 +43,15 @@ cmake   \
     -B .    \
     -DCMAKE_BUILD_TYPE=Release      \
     -DCMAKE_INSTALL_PREFIX="${INSTALLATION_FOLDER_DIR}"  \
+	-DCMAKE_C_COMPILER=gcc \
+    -DCMAKE_CXX_COMPILER=g++ \
+	-DCMAKE_CXX_FLAGS="-include limits"	\
     -DLLVM_ENABLE_PROJECTS="llvm;clang;lld" \
     -DLLVM_INSTALL_UTILS=ON
 
 cmake --build .
 
 ninja install
+
+# DCMAKE_CXX_FLAGS="-include limits"
+# Need for building llvm-9 with g++ version >= 11.4.0 

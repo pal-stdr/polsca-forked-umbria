@@ -42,6 +42,13 @@ mkdir -p "${BUILD_FOLDER_DIR}" "${INSTALLATION_FOLDER_DIR}"
 cd "${BUILD_FOLDER_DIR}"/
 
 
+# "FileCheck" bin should be available to build pluto (exactly for pluto/pet-for-pluto)
+# It should be loaded before the cmake config hits pluto
+export PATH="${PLUTO_LIBCLANG_PREFIX_DIR}/bin${PATH:+:${PATH}}"
+
+# LLvm libs should be present in the OS ENV for linking
+export LD_LIBRARY_PATH="${PLUTO_LIBCLANG_PREFIX_DIR}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 cmake   \
     -G Ninja    \
     -S "${POLSCA_ROOT_DIR}/polymer"  \
@@ -54,12 +61,14 @@ cmake   \
     -DLLVM_DIR="${POLYGEIST_LLVM_BUILD_DIR}/lib/cmake/llvm" \
     -DLLVM_EXTERNAL_LIT="${POLYGEIST_LLVM_BUILD_DIR}/bin/llvm-lit" \
     -DPLUTO_LIBCLANG_PREFIX="${PLUTO_LIBCLANG_PREFIX_DIR}"  \
+	-DLLVM_BUILD_TESTS=ON	\
     -DLLVM_ENABLE_ASSERTIONS=ON
+
+
 
 
 # Mandatory for avoiding regression test failure (libosl.so.0 linker error)
 export LD_LIBRARY_PATH="${BUILD_FOLDER_DIR}/pluto/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-
 
 # Run build
 cmake --build . --target check-polymer

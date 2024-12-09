@@ -59,4 +59,14 @@ make test-one-polymer-example-emit-c-hls
 
 make test-one-example-umbria-cpu-flow
 make test-one-polymer-example-umbria-cpu-flow
+
+
+
+make verify-one-polymer-example-umbria-cpu-flow
+
+make test-one-polymer-example-umbria-cpu-flow
+
+make verify-polybench-with-polymer-umbria-cpu-flow
+
+make test-polybench-with-polymer-umbria-cpu-flow
 ```
