@@ -2,30 +2,27 @@
 
 import datetime
 import functools
-import glob
 import itertools
-import json
 import logging
 import os
 import shutil
 import subprocess
 import traceback
-import xml.etree.ElementTree as ET
-from collections import OrderedDict, defaultdict, namedtuple
+
+from collections import namedtuple
 from dataclasses import dataclass, field
 from multiprocessing import Pool
 from timeit import default_timer as timer
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import re
-import tempfile
+
 
 import pandas as pd
 
-import pyphism_umbria_cpu_flow.utils.helper as helper
 from pyphism_umbria_cpu_flow.phism_runner.options import PhismRunnerOptions
 from pyphism_umbria_cpu_flow.phism_runner.runner import PhismRunner
-from pyphism_umbria_cpu_flow.polybench.utils import vhdl
+
 
 POLYBENCH_DATASETS = ("MINI", "SMALL", "MEDIUM", "LARGE", "EXTRALARGE")
 POLYBENCH_EXAMPLES = (
@@ -35,8 +32,8 @@ POLYBENCH_EXAMPLES = (
     "atax",
     "bicg",
     "cholesky",
-    "correlation",
-    "covariance",
+    "correlation",  # Result verification fails from dataset=SMALL or greater. But works for dataset=MINI
+    "covariance",  # Result verification fails from dataset=SMALL or greater. But works for dataset=MINI
     "deriche",  # Compile problem
     "doitgen",  # Result problem
     "durbin",
@@ -60,21 +57,41 @@ POLYBENCH_EXAMPLES = (
     "trisolv",
     "trmm",
 )
-RESOURCE_FIELDS = ("DSP", "FF", "LUT", "BRAM_18K", "URAM")
+
+# Will be used to check different error msgs and making decision
+ERROR_DICTIONARY = {
+    "EXECUTION_ERROR": {
+        "ERR_PROFILE_LOG_MATCH_CASE": r"^Error.*\n(.*)",
+        "ERROR_MSG_MATCH_CASES": [
+            r"double free or corruption \(!prev\)\nAborted \(core dumped\)",  # typically happens for verification error
+            r"malloc\(\): corrupted top size\nAborted \(core dumped\)"       # typically happens for execution error
+        ]
+    },
+    "VERIFICATION_ERROR": {
+        "ERR_PROFILE_LOG_MATCH_CASE": r"^Result mismatched.*\n(.*)",
+    }
+}
+
+
+
+# RECORD_FIELDS = (
+#     "name",
+#     "run_status",
+#     "latency",
+#     "res_usage",
+#     "res_avail",
+# )
 RECORD_FIELDS = (
     "name",
+    "operation_name",
+    "time",
     "run_status",
-    "latency",
-    "res_usage",
-    "res_avail",
 )
-RUN_STATUS_FIELDS = ("status",)
 
-PHISM_VITIS_STEPS = ("phism", "tbgen", "cosim")
 
 Record = namedtuple("Record", RECORD_FIELDS)
-Resource = namedtuple("Resource", RESOURCE_FIELDS)
-RunStatus = namedtuple("RunStatus", RUN_STATUS_FIELDS)
+
+
 
 
 @dataclass
@@ -135,244 +152,30 @@ def get_project_root():
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-def matched(s, patterns):
-    """Check if string s matches any of the patterns."""
-    if not patterns:
-        return False
-    for p in patterns:
-        if p in s:
-            return True
-    return False
-
-
-def get_single_file_with_ext(d, ext, includes=None, excludes=None):
-    """Find the single file under the current directory with a specific extension."""
-    for f in os.listdir(d):
-        if not f.endswith(ext):
-            continue
-        if includes and not matched(f, includes):
-            continue
-        if excludes and matched(f, excludes):
-            continue
-        return f
-
-    return None
-
-
-def get_vitis_log(d, step, stream):
-    """Return the file path to a specific Vitis log."""
-    assert step in PHISM_VITIS_STEPS
-    assert stream in ("stdout", "stderr")
-
-    return os.path.join(
-        d, "{step}.vitis_hls.{stream}.log".format(step=step, stream=stream)
-    )
 
 
 # ----------------------- Data record fetching functions -----------------------
 
 
-def fetch_resource_usage(d, avail=False):
-    """Find the report file *.xml and return the resource usage estimation."""
-    syn_report_dir = os.path.join(d, "tb", "solution1", "syn", "report")
-    if not os.path.isdir(syn_report_dir):
-        return None
 
-    syn_report = get_single_file_with_ext(syn_report_dir, "xml", ["kernel"], ["PE"])
-    if not syn_report:
-        return None
-
-    syn_report = os.path.join(syn_report_dir, syn_report)
-    if not os.path.isfile(syn_report):
-        return None
-
-    # Parse the XML report and find every resource usage (tags given by RESOURCE_FIELDS)
-    root = ET.parse(syn_report).getroot()
-    res_tag = "Resources" if not avail else "AvailableResources"
-    return Resource(
-        *[
-            int(root.findtext("AreaEstimates/{}/{}".format(res_tag, res)))
-            for res in RESOURCE_FIELDS
-        ]
-    )
-
-
-def fetch_latency(d: str, csim: bool = False):
-    """Fetch the simulated latency, measured in cycles."""
-    tb_sim_report_dir = os.path.join(
-        d, "tb" if not csim else "tb.csim", "solution1", "sim", "report"
-    )
-    if not os.path.isdir(tb_sim_report_dir):
-        return None
-
-    tb_sim_report = get_single_file_with_ext(tb_sim_report_dir, "rpt")
-    if not tb_sim_report:
-        return None
-
-    tb_sim_report = os.path.join(tb_sim_report_dir, tb_sim_report)
-    if not os.path.isfile(tb_sim_report):
-        return None
-
-    latency = None
-    with open(tb_sim_report, "r") as f:
-        for line in reversed(f.readlines()):
-            if latency:
-                break
-            comps = [x.strip() for x in line.strip().split("|")]
-
-            # there are 9 columns, +2 before & after |
-            # the 2nd column should give PASS.
-            if len(comps) == 11 and comps[2].upper() == "PASS":
-                latency = comps[-2]  # from the last column.
-
-    # The report is malformed.
-    if not latency:
-        return None
-
-    try:
-        # Will raise error if latency is not an integer.
-        return int(latency)
-    except:
-        return None
-
-
-def fetch_syn_latency(d):
-    """Fetch latency measured in the synthesis phase."""
-    syn_report_dir = os.path.join(d, "proj", "solution1", "syn", "report")
-    if not os.path.isdir(syn_report_dir):
-        return None
-
-    syn_report = get_single_file_with_ext(syn_report_dir, "xml", ["kernel"], ["PE"])
-    if not syn_report:
-        return None
-
-    syn_report = os.path.join(syn_report_dir, syn_report)
-    if not os.path.isfile(syn_report):
-        return None
-
-    # Parse the XML report and find every resource usage (tags given by RESOURCE_FIELDS)
-    root = ET.parse(syn_report).getroot()
-    latency = root.findtext(
-        "PerformanceEstimates/SummaryOfOverallLatency/Average-caseLatency"
-    )
-    try:
-        return int(latency)
-    except:
-        return None
-
-
-def fetch_run_status(d):
-    """Gather the resulting status of each stage."""
-
-    def parse_synth_log(fp):
-        if not os.path.isfile(fp):
-            return "NO_LOG"
-        else:
-            with open(fp, "r") as f:
-                has_error = any(
-                    ("Synthesizability check failed." in line) for line in f.readlines()
-                )
-                if has_error:
-                    return "CANNOT_SYNTH"
-        return "SUCCESS"
-
-    def parse_cosim_log(fp):
-        if not os.path.isfile(fp):
-            return "NO_LOG"
-        else:
-            with open(fp, "r") as f:
-                has_error = any(
-                    ("co-simulation finished: FAIL" in line) for line in f.readlines()
-                )
-                if has_error:
-                    return "COSIM_FAILED"
-        return "SUCCESS"
-
-    return RunStatus(
-        # parse_synth_log(get_vitis_log(d, "phism", "stdout")),
-        parse_cosim_log(get_vitis_log(d, "tbgen", "stdout")),
-        # parse_cosim_log(get_vitis_log(d, "cosim", "stdout")),
-    )
-
-
-def fetch_pipeline_info(d: str, proj_name: str = "tb") -> Dict[str, List[Any]]:
-    """Find the pipeline II result from the provided project directory."""
-    syn_report_dir = os.path.join(d, proj_name, "solution1", "syn", "report")
-    if not os.path.isdir(syn_report_dir):
-        return None
-
-    syn_report = os.path.join(syn_report_dir, "csynth.xml")
-    if not os.path.isfile(syn_report):
-        return None
-
-    # Parse the XML report and find every resource usage (tags given by RESOURCE_FIELDS)
-    data = defaultdict(list)
-    root = ET.parse(syn_report).getroot()
-
-    def process(el: Optional[ET.Element], module_name: str):
-        if el is None:
-            return
-
-        pipeline_ii = el.findtext("PipelineII")
-        if pipeline_ii is not None:
-            name = el.findtext("Name")
-
-            data["module_name"].append(module_name)
-            data["loop_name"].append(name)
-            data["pipeline_ii"].append(pipeline_ii)
-
-            return
-
-        for child in el.getchildren():
-            process(child, module_name)
-
-    for el in root.findall("ModuleInformation/Module"):
-        module_name = el.findtext("Name")
-        loops = el.find("PerformanceEstimates/SummaryOfLoopLatency")
-        process(loops, module_name)
-
-    return data
-
-
-def process_directory(d):
-    """Process the result data within the given directory. Return a dictionary of all available data entries."""
-    example_name = os.path.basename(d)
-    return Record(
-        example_name,
-        fetch_run_status(d),
-        fetch_latency(d),
-        # fetch_latency(d, csim=True),
-        # fetch_syn_latency(d),
-        fetch_resource_usage(d),
-        fetch_resource_usage(d, avail=True),
-    )
-
-
-def process_pb_flow_result_dir(d: str, options: PbFlowOptions):
-    """Process the result directory from pb-flow runs."""
-    records = []
-    assert os.path.isdir(d)
-
-    # Each example should have their original .c/.h files. We will look for that.
-    pattern = "{}/**/*.h".format(d)
-    for src_header_file in glob.glob(pattern, recursive=True):
-        basename = os.path.basename(src_header_file)[:-2]  # skip '.h'
-        if basename in options.examples and basename not in options.excl:
-            records.append(
-                process_directory(os.path.abspath(os.path.dirname(src_header_file)))
-            )
-
-    return records
-
-
-def filter_success(df):
-    """Filter success rows."""
-    return df[df["status"] == "SUCCESS"]
 
 
 # ----------------------- Data processing ---------------------------
 
-def filter_result(result_file):
+# Umbria add
+def get_regex_filtered_result_list(result_file: str):
+    """
+    Results are dumped in following format from the Polybench kernel.
+    ==BEGIN DUMP_ARRAYS==
+    begin dump: D
+    27.95 26.28 28.44
+    ....
+    end   dump: D
+    ==END   DUMP_ARRAYS==
+
+    Objective: Is to collect all the numbers and return them as a list
+    """
+
 
     # Read the content of the file
     with open(result_file, "r") as file:
@@ -394,25 +197,13 @@ def filter_result(result_file):
     return result_list
 
 
-def expand_resource_field(field):
-    """Will turn things like "res_avail" to a list ['DSP_avail', 'FF_avail', ...]"""
-    if "res_" not in field:
-        return [field]
-    avail = field.split("_")[-1]
-    return ["{}_{}".format(res, avail) for res in RESOURCE_FIELDS]
-
-
-def expand_field(field):
-    """Turn a nested namedtuple into a flattened one."""
-    if "res_" in field:
-        return expand_resource_field(field)
-    if "run_status" in field:
-        return RUN_STATUS_FIELDS
-    return [field]
-
-
 def is_list_record(x):
-    return isinstance(x, (Resource, RunStatus))
+    return isinstance(
+        x,
+        (
+            Record,
+        )
+    )
 
 
 def flatten_record(record):
@@ -424,7 +215,8 @@ def flatten_record(record):
 
 def to_pandas(records):
     """From processed records to pandas DataFrame."""
-    cols = list(itertools.chain(*[expand_field(field) for field in RECORD_FIELDS]))
+    # cols = list(itertools.chain(*[expand_field(field) for field in RECORD_FIELDS]))
+    cols = list(itertools.chain([field for field in RECORD_FIELDS]))
     data = list([flatten_record(r) for r in records])
     data.sort(key=lambda x: x[0])
 
@@ -432,304 +224,26 @@ def to_pandas(records):
     return pd.DataFrame(data=data, columns=cols, dtype=object)
 
 
-# ----------------------- Cosim utilities ---------------------------
-
-
-@dataclass
-class ApMemoryInterface:
-    name: str
-    ports: List[str]
-
-    def get_name_without_partition(self) -> str:
-        return self.name.split("_")[0]
-
-    def get_num_ports(self) -> int:
-        return len(set([port[-1] for port in self.ports]))
-
-    def is_read_only(self, port_id: int) -> bool:
-        return f"we{port_id}" not in self.ports
-
-    def is_write_only(self, port_id: int) -> bool:
-        return f"q{port_id}" not in self.ports
-
-    def is_read_write(self, port_id: int) -> bool:
-        return f"q{port_id}" in self.ports and f"d{port_id}" in self.ports
-
-
-def get_module_parameters(file: str, module_name: str) -> List[str]:
-    """Read the module definition into parameter lists."""
-    with open(file, "r") as f:
-        lines = f.readlines()
-
-    lines = [line.strip() for line in lines]
-    start_line = next(i for i, l in enumerate(lines) if f"module {module_name}" in l)
-    end_line = next(i for i, l in enumerate(lines) if ");" in l)
-
-    params = (" ".join(line for line in lines[start_line + 1 : end_line])).split(",")
-    return [param.strip() for param in params if param.strip()]
-
-
-def get_autotb_parameters(file: str) -> List[str]:
-    """Read interface from autotb files."""
-    assert os.path.isfile(file)
-    assert file.endswith(".autotb.v")
-
-    with open(file, "r") as f:
-        lines = f.readlines()
-    lines = [line.strip() for line in lines]
-
-    start_line = next(
-        i for i, l in enumerate(lines) if f"`AUTOTB_DUT `AUTOTB_DUT_INST(" in l
-    )
-    assert start_line >= 0 and start_line < len(lines)
-
-    end_line = next(i for i, l in enumerate(lines) if ");" in l and i > start_line)
-    assert end_line >= 0 and end_line < len(lines)
-
-    # Deal with things like -
-    # .ap_clk(ap_clk),
-    # .ap_rst(ap_rst),
-
-    conns = (" ".join(line for line in lines[start_line + 1 : end_line + 1])).split(",")
-    conns = [conn.strip() for conn in conns]
-
-    params = []
-    for conn in conns:
-        if conn.endswith(");"):
-            conn = conn[:-2]
-        assert conn[0] == "." and "(" in conn and conn[-1] == ")"
-        param = conn.split("(")[0][1:]
-        assert param == conn.split("(")[1][:-1]
-        params.append(param)
-
-    return params
-
-
-def get_memory_interfaces(params: List[str]):
-    """Parse memory interfaces from the module params."""
-    interfaces = OrderedDict()
-    for param in params:
-        prefix = "_".join(param.split("_")[:-1])
-        if prefix not in interfaces:
-            interfaces[prefix] = []
-        if param.startswith("ap") or "_" not in param:
-            continue
-        interfaces[prefix].append(param.split("_")[-1])
-
-    return [
-        ApMemoryInterface(name, ports)
-        for name, ports in interfaces.items()
-        if "address0" in ports
-    ]
-
-
-@dataclass
-class CosimFixStrategy:
-    phism_directives: List[str]
-    tbgen_directives: List[str]
-    phism_mem_interfaces: List[ApMemoryInterface]
-    tbgen_mem_interfaces: List[ApMemoryInterface]
-
-    def empty(self):
-        return not self.phism_directives and not self.tbgen_directives
-
-
-def is_read_write_conflict(
-    src_mem: ApMemoryInterface, dst_mem: ApMemoryInterface, port_id: int
-) -> bool:
-    return (src_mem.is_read_only(port_id) and dst_mem.is_write_only(port_id)) or (
-        dst_mem.is_read_only(port_id) and src_mem.is_write_only(port_id)
-    )
-
-
-def is_cosim_interface_matched(
-    src_mems: List[ApMemoryInterface], dst_mems: List[ApMemoryInterface]
-) -> bool:
-    if len(src_mems) != len(dst_mems):
-        return False
-
-    for src, dst in zip(src_mems, dst_mems):
-        if src.get_num_ports() != dst.get_num_ports():
-            return False
-        if set(src.ports) != set(dst.ports):
-            return False
-
-    return True
-
-
-def get_cosim_fix_strategy(
-    kernel_name: str,
-    src_mems: List[ApMemoryInterface],
-    dst_mems: List[ApMemoryInterface],
-    before_partition: bool = True,
-) -> CosimFixStrategy:
-    if len(src_mems) != len(dst_mems):
-        raise RuntimeError("The number of ap_memory interfaces should be the same.")
-    if [mem.name for mem in src_mems] != [mem.name for mem in dst_mems]:
-        raise RuntimeError("The name of the interfaces should be the same.")
-
-    # Determine whether we can fix this.
-    strategy = CosimFixStrategy(
-        phism_directives=[],
-        tbgen_directives=[],
-        phism_mem_interfaces=src_mems,
-        tbgen_mem_interfaces=dst_mems,
-    )
-
-    # Iterate every memory interface to see if there is any chance for fixing them.
-    for src_mem, dst_mem in zip(src_mems, dst_mems):
-        dst_mem_name = (
-            dst_mem.name
-            if not before_partition
-            else dst_mem.get_name_without_partition()
-        )
-        # If any memory interface from the source uses single port, while the target uses dual ports,
-        # we will modify the TCL for Phism.
-        if src_mem.get_num_ports() == 1 and dst_mem.get_num_ports() == 2:
-            strategy.tbgen_directives.append(
-                f"set_directive_interface -mode ap_memory -storage_type ram_1p {kernel_name} {dst_mem_name}"
-            )
-        elif src_mem.get_num_ports() == 2 and dst_mem.get_num_ports() == 1:
-            strategy.tbgen_directives.append(
-                f"set_directive_interface -mode ap_memory -storage_type ram_2p {kernel_name} {dst_mem_name}"
-            )
-        elif src_mem.get_num_ports() == dst_mem.get_num_ports():
-            num_ports = src_mem.get_num_ports()
-            if num_ports == 2:
-                # Make sure the dst_mem is 1 write n read.
-                # TODO: is this condition enough for detection?
-                if src_mem.is_read_only(1) and dst_mem.is_read_write(1):
-                    strategy.tbgen_directives.append(
-                        f"set_directive_interface -mode ap_memory -storage_type ram_1wnr {kernel_name} {dst_mem_name}"
-                    )
-                elif (
-                    src_mem.is_read_write(0)
-                    and src_mem.is_read_write(1)  # Phism is T2P
-                    and (
-                        dst_mem.is_read_only(0) or dst_mem.is_read_only(1)
-                    )  # tbgen is not
-                ):
-                    strategy.tbgen_directives.append(
-                        f"set_directive_interface -mode ap_memory -storage_type ram_t2p {kernel_name} {dst_mem_name}"
-                    )
-                elif is_read_write_conflict(
-                    src_mem, dst_mem, 0
-                ) and is_read_write_conflict(src_mem, dst_mem, 1):
-                    strategy.tbgen_directives.append(
-                        f"set_directive_interface -mode ap_memory -storage_type ram_1wnr {kernel_name} {dst_mem_name}"
-                    )
-
-    strategy.tbgen_directives = list(set(strategy.tbgen_directives))
-    strategy.phism_directives = list(set(strategy.phism_directives))
-
-    return strategy
-
-
-def fix_cosim_kernels(dir: str) -> CosimFixStrategy:
-    """Fix issues with co-simulation.
-    Returns directives for (source, destination).
-    """
-
-    dir = os.path.abspath(dir)  # canonicalize path
-    kernel_name = f"kernel_{os.path.basename(dir)}"
-
-    src_proj_dir = os.path.join(dir, "proj", "solution1")
-    assert os.path.isdir(src_proj_dir)
-
-    dst_proj_dir = os.path.join(dir, "tb.backup", "solution1")
-    assert os.path.isdir(dst_proj_dir)
-
-    src_kernel = os.path.join(src_proj_dir, "syn", "verilog", f"{kernel_name}.v")
-    assert os.path.isfile(src_kernel)
-
-    dst_kernel = os.path.join(dst_proj_dir, "syn", "verilog", f"{kernel_name}.v")
-    assert os.path.isfile(dst_kernel)
-
-    src_params = get_module_parameters(src_kernel, kernel_name)
-    dst_params = get_module_parameters(dst_kernel, kernel_name)
-
-    return get_cosim_fix_strategy(
-        kernel_name,
-        get_memory_interfaces(src_params),
-        get_memory_interfaces(dst_params),
-    )
-
-
-def insert_directives(directives: List[str], file: str, insertion_point: str):
-    """Insert directives within the target file before the insertion point."""
-    with open(file, "r") as f:
-        lines = f.readlines()
-    assert lines
-
-    lines = [l.strip() for l in lines]
-
-    pos = next(i for i, l in enumerate(lines) if insertion_point in l)
-    assert pos >= 0 and pos < len(lines)
-
-    lines = lines[:pos] + directives + lines[pos:]
-    with open(file, "w") as f:
-        f.write("\n".join(lines))
-
-
-def is_cosim_setup(file: str):
-    with open(file, "r") as f:
-        lines = f.readlines()
-
-    return any(("cosim_design" in line and "setup" in line) for line in lines)
-
-
-def toggle_cosim_setup(file: str):
-    """Toggle the -setup option for cosim_design."""
-    with open(file, "r") as f:
-        lines = f.readlines()
-    assert lines
-
-    lines = [l.strip() for l in lines]
-    pos = next(i for i, l in enumerate(lines) if "cosim_design" in l)
-    assert pos >= 0 and pos < len(lines)
-
-    if "-setup" in lines[pos]:
-        lines[pos] = lines[pos].replace("-setup", "")
-    else:
-        lines[pos] += " -setup"
-
-    with open(file, "w") as f:
-        f.write("\n".join(lines))
-
-
-def comment_out_cosim(file: str):
-    with open(file, "r") as f:
-        lines = f.readlines()
-    assert lines
-
-    lines = [l.strip() for l in lines]
-    pos = next(i for i, l in enumerate(lines) if "cosim_design" in l)
-    assert pos >= 0 and pos < len(lines)
-
-    lines[pos] = f"# {lines[pos]}"
-
-    with open(file, "w") as f:
-        f.write("\n".join(lines))
 
 
 # ----------------------- Benchmark runners ---------------------------
 
 
-def discover_examples(
-    d: str, examples: Optional[List[str]] = None, excludes: Optional[List[str]] = None
-) -> List[str]:
-    """Find examples in the given directory."""
-    if not examples:
-        examples = POLYBENCH_EXAMPLES
+# def discover_examples(
+#     d: str, examples: Optional[List[str]] = None, excludes: Optional[List[str]] = None
+# ) -> List[str]:
+#     """Find examples in the given directory."""
+#     if not examples:
+#         examples = POLYBENCH_EXAMPLES
 
-    return sorted(
-        [
-            root
-            for root, _, _ in os.walk(d)
-            if os.path.basename(root).lower() in examples
-            and os.path.basename(root).lower() not in excludes
-        ]
-    )
+#     return sorted(
+#         [
+#             root
+#             for root, _, _ in os.walk(d)
+#             if os.path.basename(root).lower() in examples
+#             and os.path.basename(root).lower() not in excludes
+#         ]
+#     )
 
 
 def get_phism_env():
@@ -777,57 +291,16 @@ def get_phism_env():
 
 
 def get_top_func(src_file):
-    """Get top function name."""
+    """Get top function name.
+    some kernel files like jacobi-1d.c has a kernel defined as "kernel-jacobi_1d"
+        1. This function takes thte path of that file
+        2. Then strip just the file name (e.g. "jacobi-1d")
+        3. Replace the "-" with "_" and return name as "jacobi_1d"
+    """
     return "kernel_{}".format(os.path.basename(os.path.dirname(src_file))).replace(
         "-", "_"
     )
 
-
-# Changed by umbria
-# def get_top_func_param_names(src_file, source_dir, llvm_dir=None):
-def get_top_func_param_names(src_file, source_dir, llvm_build_dir=None):
-    """From the given C file, we try to extract the top function's parameter list.
-    This will be useful for Vitis LLVM rewrite."""
-
-    def is_func_decl(item, name):
-        return item["kind"] == "FunctionDecl" and item["name"] == name
-
-    top_func = get_top_func(src_file)
-    clang_path = "clang"
-
-    # Changed by umbria
-    # if llvm_dir:
-    if llvm_build_dir:
-        # clang_path = os.path.join(llvm_dir, "build", "bin", "clang")
-        clang_path = os.path.join(llvm_build_dir, "bin", "clang")
-
-    # Get the corresponding AST in JSON.
-    proc = subprocess.Popen(
-        [
-            clang_path,
-            src_file,
-            "-Xclang",
-            "-ast-dump=json",
-            "-fsyntax-only",
-            "-I{}".format(os.path.join(source_dir, "utilities")),
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    data = json.loads(proc.stdout.read())
-
-    # First find the top function declaration entry.
-    top_func_decls = list(
-        filter(functools.partial(is_func_decl, name=top_func), data["inner"])
-    )
-    assert len(top_func_decls) == 1, "Should be a single declaration for top."
-    top_func_decl = top_func_decls[0]
-
-    # Then get all ParmVarDecl.
-    parm_var_decls = filter(
-        lambda x: x["kind"] == "ParmVarDecl", top_func_decl["inner"]
-    )
-    return [decl["name"] for decl in parm_var_decls]
 
 
 
@@ -860,6 +333,11 @@ class PbFlow(PhismRunner):
 
         self.status = 0
         self.errmsg = "No Error"
+        
+        # self.kernel_execution_time = 0.00 # Added by Umbria
+        # self.verification_errmsg = "" # Added by Umbria
+        self.is_kernel_execution_error_found: bool = False # Added by Umbria
+        self.is_result_mismatch_error_found: bool = False # Added by Umbria
 
         # Logger
         self.logger = logging.getLogger("pb-flow")
@@ -915,28 +393,38 @@ class PbFlow(PhismRunner):
                 # .sanity_check(no_diff=True)
                 .scop_stmt_inline()      # if self.options.loop_transforms==True, then this will be deactivated
                 .mlir_opt_chain_for_cpu()
+                # .lower_llvm()
                 # .sanity_check()
                 .translate_mlir_to_llvmir_for_cpu()
                 .compile_bin_for_cpu()
                 .run_bin_on_cpu()
                 .verify_benchmark_result()
+                .dump_kernel_profile_logs_to_file()
                 # .sanity_check(no_diff=True)
-                # .lower_scf()
-                # .lower_llvm()
-                # .vitis_opt()
-                # .write_tb_tcl_by_llvm()
-                # # Default deactivated # .run_vitis_on_phism()
-                # .run_vitis()
-                # # Default deactivated # .backup_csim_results()
-                # # Default deactivated # .copy_design_from_phism_to_tb()
-                # # Default deactivated # .run_cosim()
             )
         except Exception as e:
             self.status = 1
             self.errmsg = e
 
+            # If exception occurred, have to create a file named "transformation.error.log" in each kernel dir where the error occured
+            # Later it will be used to trace the "transformation.error.log" to created log and report
+            # If this file is found in any kernel dir, will be considered transformation error occurred
+            base_dir = os.path.dirname(self.cur_file)
+
+            # For Success case: cpu.profile.log
+            transformation_error_log_file = os.path.join(base_dir, "transformation.error.log")
+
+            # Ensure the file exists or create it empty if not
+            open(transformation_error_log_file, "a").close()
+
+            # Now dump error log the content in that file
+            with open(transformation_error_log_file, "w") as error_file:
+                error_file.write("".join(traceback.format_exc()))
+                error_file.close()
+
             # Log stack
             self.logger.error(traceback.format_exc())
+
 
     def run_command(
         self, cmd: str = "", cmd_list: Optional[List[str]] = None, **kwargs
@@ -981,7 +469,7 @@ class PbFlow(PhismRunner):
 
         # Base flags
         flags = [
-            ""
+
         ]
 
         # If sanity check is enabled
@@ -999,6 +487,7 @@ class PbFlow(PhismRunner):
         if self.options.enable_papi:
             flags += ["-D POLYBENCH_PAPI", "-D POLYBENCH_TIME", f"-I {os.path.join(self.papi_installation_dir, 'include')}", f"-L {os.path.join(self.papi_installation_dir, 'lib')}", "-lpapi"]
 
+
         # (sanity_check or verify_results or enable_papi) if any one of them is eanabled, donot add "-D POLYBENCH_TIME"
         if self.options.sanity_check or self.options.verify_benchmark_result or self.options.enable_papi:
             pass
@@ -1006,18 +495,33 @@ class PbFlow(PhismRunner):
             if "-D POLYBENCH_TIME" not in flags:
                 flags += ["-D POLYBENCH_TIME"]
         
+
+        # If user wants only the kernel transformation, then we need to replace/remove all the previously added flags.
+        # Because earlier flags are for executabls
+        if self.options.only_kernel_transformation:
+            kernel_name = get_top_func(self.cur_file)
+            flags = [f"--function=kernel_{kernel_name}"]
+            return " ".join(flags)
+
         # print(flags)
 
         # Join flags into a single string
         return " ".join(flags)
 
-        
-    
+            
     def get_golden_out_file(self) -> str:
         path = os.path.basename(self.cur_file)
         return os.path.join(
             os.path.dirname(self.cur_file), path.split(".")[0] + ".golden.out"
         )
+    
+
+    def get_kernel_name_with_path(self) -> str:
+        path = os.path.basename(self.cur_file)
+        return os.path.join(
+            os.path.dirname(self.cur_file), path.split(".")[0]
+        )
+    
 
     def dump_test_data(self):
         """Compile and dump test data for sanity check."""
@@ -1075,6 +579,9 @@ class PbFlow(PhismRunner):
 
     def dump_test_data_for_cpu(self):
         """Compile and dump test data for result verification."""
+
+        if self.options.only_kernel_transformation:
+            return self
 
         # If there are no main() in mlir, it is useless to run it for cpu and verify the result
         if self.options.keep_only_kernel_no_main_in_mlir is True:
@@ -1190,6 +697,8 @@ class PbFlow(PhismRunner):
         """Compile C code to MLIR using mlir-clang. If the --sanity-check is true, then it will not be called. Because '-D POLYBENCH_TIME' will be activated for production compile to measure time. '-D POLYBENCH_TIME' make the sanity check to fail."""
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(".c", ".mlir")
+
+        # print(self.prep_polybench_c_macro_compile_flags())
 
         self.run_command(cmd=f'sed -i "s/static//g" {src_file}', shell=True)
         self.run_command(
@@ -1344,7 +853,9 @@ class PbFlow(PhismRunner):
     def extract_top_func_for_cpu(self):
         """Extract the top function and all the stuff it calls. 'keep_only_kernel_no_main_in_mlir' option is very important. Because if it is false, then "main()" is going to be removed from the MLIR code, and you cannot test with CPU flow."""
 
-        if self.options.keep_only_kernel_no_main_in_mlir is True:
+        # print("I am hit - for deriche")
+
+        if self.options.only_kernel_transformation is True or self.options.keep_only_kernel_no_main_in_mlir is True:
             keep_all = False
         else:
             keep_all = True
@@ -1652,335 +1163,6 @@ class PbFlow(PhismRunner):
 
         return self
 
-    def vitis_opt(self):
-        """Optimize LLVM IR for Vitis."""
-        if self.options.sanity_check:
-            self.logger.debug("Skipped --vitis-opt since in --sanity-check.")
-            return self
-        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
-            ".llvm", ".vitis.llvm"
-        )
-        log_file = self.cur_file.replace(".llvm", ".log")
-
-        xln_names = get_top_func_param_names(
-            self.c_source,
-            self.work_dir,
-            # Changed by umbria
-            # llvm_dir=os.path.join(self.root_dir, "polygeist", "llvm-project"),
-            llvm_build_dir=self.llvm_build_dir
-        )
-
-        # Whether array partition has been successful.
-        xln_ap_enabled = os.path.isfile(
-            os.path.join(os.path.dirname(self.cur_file), "array_partition.txt")
-        )
-        if self.options.array_partition_v2:
-            xln_ap_enabled = True
-
-        args = [
-            os.path.join(
-                # Changed by umbria
-                # self.root_dir, "polygeist", "llvm-project", "build", "bin", "opt"
-                self.llvm_build_dir, "bin", "opt"
-            ),
-            src_file,
-            "-S",
-            "-enable-new-pm=0",
-            '-load "{}"'.format(
-                # Changed by umbria
-                # os.path.join(self.root_dir, "build", "lib", "VhlsLLVMRewriter.so")
-                os.path.join(self.polsca_build_dir, "lib", "VhlsLLVMRewriter.so")
-            ),
-            "-strip-debug",
-            "-select-pointer",
-            "-subview",
-            "-mem2arr",
-            "-instcombine",
-            "-xlnmath",
-            "-xlnname",
-            "-xlnanno",
-            '-xlntop="{}"'.format(get_top_func(src_file)),
-            '-xlnnames="{}"'.format(",".join(xln_names)),
-            "-xlnunroll" if self.options.loop_transforms else "",
-            "-xlnram2p",
-            f"-xln-has-nonaff={self.options.has_non_affine}",
-            "-xlnarraypartition" if self.options.array_partition else "",
-            "-xln-ap-flattened",
-            "-xln-ap-enabled" if xln_ap_enabled else "",
-            "-strip-attr",
-            "-debug",
-        ]
-
-        self.run_command(
-            cmd=" ".join(args),
-            shell=True,
-            stdout=open(self.cur_file, "w"),
-            stderr=open(log_file, "w"),
-            env=self.env,
-        )
-
-        return self
-
-    def write_tb_tcl_by_llvm(self):
-        """Generate the tbgen TCL file from LLVM passes."""
-        src_file = self.cur_file
-        base_dir = os.path.dirname(src_file)
-        top_func = get_top_func(src_file)
-
-        # Whether array partition has been successful.
-        xln_ap_enabled = os.path.isfile(os.path.join(base_dir, "array_partition.txt"))
-        if self.options.array_partition_v2:
-            xln_ap_enabled = True
-
-        tbgen_vitis_tcl = os.path.join(base_dir, "tbgen.tcl")
-
-        tb_tcl_log = "write_tb_tcl_by_llvm.log"
-
-        # Write the TCL for TBGEN.
-        args = [
-            os.path.join(
-                # Changed by umbria
-                # self.root_dir, "polygeist", "llvm-project", "build", "bin", "opt"
-                self.llvm_build_dir, "bin", "opt"
-            ),
-            src_file,
-            "-S",
-            "-enable-new-pm=0",
-            '-load "{}"'.format(
-                # Changed by umbria
-                # os.path.join(self.root_dir, "build", "lib", "VhlsLLVMRewriter.so")
-                os.path.join(self.polsca_build_dir, "lib", "VhlsLLVMRewriter.so")
-            ),
-            f'-xlntop="{top_func}"',
-            "-xlntbgen",
-            "-xln-ap-flattened",
-            "-xln-ap-enabled" if xln_ap_enabled else "",
-            f"-xlntbdummynames={base_dir}/dummy.cpp",
-            f'-xlntbtclnames="{tbgen_vitis_tcl}"',
-            f'-xlnllvm="{src_file}"',
-        ]
-
-        self.run_command(
-            cmd=" ".join(args),
-            shell=True,
-            stdout=open(tb_tcl_log, "w"),
-            env=self.env,
-        )
-
-        return self
-
-    def run_vitis_on_phism(self):
-        """Just run vitis_hls on the LLVM generated from Phism."""
-        # DEPRECATED
-        if self.options.skip_vitis:
-            self.logger.warn("Vitis won't run since --skip-vitis has been set.")
-            return self
-        if self.options.cosim:
-            self.logger.warn("Vitis won't run since --cosim has been set.")
-            return self
-
-        src_file = self.cur_file
-        base_dir = os.path.dirname(src_file)
-        top_func = get_top_func(src_file)
-
-        phism_vitis_tcl = os.path.join(base_dir, "phism.tcl")
-        run_config = "config_bind -effort high"
-        if self.options.debug:
-            run_config = ""
-
-        # Generate dummy C code as the interface for the top function.
-        dummy_src = src_file.replace(".llvm", ".dummy.c")
-        with open(dummy_src, "w") as f:
-            f.write("void {}() {{}}".format(top_func))
-
-        # Write the TCL for Phism.
-        with open(phism_vitis_tcl, "w") as f:
-            phism_run_config = [str(run_config)]
-            f.write(
-                PHISM_VITIS_TCL.format(
-                    src_file=src_file,
-                    dummy_src=dummy_src,
-                    top_func=top_func,
-                    config="\n".join(phism_run_config),
-                )
-            )
-
-        log_file = os.path.join(base_dir, "phism.vitis_hls.stdout.log")
-
-        # Clean up old results
-        shutil.rmtree(os.path.join(base_dir, "proj"), ignore_errors=True)
-        if os.path.isfile(log_file):
-            os.remove(log_file)
-
-        if self.options.dry_run:
-            return self
-
-        self.run_command(
-            cmd_list=["vitis_hls", phism_vitis_tcl],
-            stdout=open(log_file, "w"),
-            stderr=open(os.path.join(base_dir, "phism.vitis_hls.stderr.log"), "w"),
-            env=self.env,
-        )
-
-        return self
-
-    def run_vitis(self, force_skip=False):
-        """Run the tbgen.tcl file. Assuming the Tcl file has been written."""
-        if self.options.skip_vitis:
-            self.logger.warn("Vitis won't run since --skip-vitis has been set.")
-            return self
-        src_file = self.cur_file
-        base_dir = os.path.dirname(src_file)
-
-        tbgen_vitis_tcl = os.path.join(base_dir, "tbgen.tcl")
-        assert os.path.isfile(tbgen_vitis_tcl), f"{tbgen_vitis_tcl} should exist."
-
-        if self.options.skip_csim or force_skip:
-            self.logger.warn("CSim is set to be skipped.")
-            if not is_cosim_setup(tbgen_vitis_tcl):
-                self.logger.debug("Toggled -setup to cosim_design.")
-                toggle_cosim_setup(tbgen_vitis_tcl)
-
-        if not self.options.cosim:
-            self.logger.warn("Cosim won't run due to the input setting.")
-            comment_out_cosim(tbgen_vitis_tcl)
-
-        if self.options.dry_run:
-            return self
-
-        tb_dir = os.path.join(base_dir, "tb")
-        if os.path.isdir(tb_dir):
-            shutil.rmtree(tb_dir)
-            self.logger.debug(f"Removed old {tb_dir}")
-        log_file = os.path.join(base_dir, "tbgen.vitis_hls.stdout.log")
-        if os.path.isfile(log_file):
-            os.remove(log_file)
-
-        self.run_command(
-            cmd_list=["vitis_hls", tbgen_vitis_tcl],
-            stdout=open(log_file, "w"),
-            stderr=open(os.path.join(base_dir, "tbgen.vitis_hls.stderr.log"), "w"),
-            env=self.env,
-        )
-
-        return self
-
-    def backup_csim_results(self):
-        """Create a backup for the csim results."""
-        if not self.options.cosim:
-            return self
-        # TODO: make this --dry-run compatible
-        base_dir = os.path.dirname(self.cur_file)
-        tbgen_dir = os.path.join(base_dir, "tb")
-        assert os.path.isdir(
-            tbgen_dir
-        ), f"tbgen_dir={tbgen_dir} isn't there, please don't skip csim in this case."
-
-        csim_dir = os.path.join(base_dir, "tb.csim")
-        if os.path.isdir(csim_dir):
-            self.logger.debug(f"csim_dir={csim_dir} exists, deleting it ...")
-            shutil.rmtree(csim_dir)
-
-        # Backup the tbgen (csim) results.
-        shutil.copytree(tbgen_dir, csim_dir)
-
-        return self
-
-    def copy_design_from_phism_to_tb(self, try_fix=True):
-        """Move design files from Phism output to the testbench directory."""
-        if not self.options.cosim:
-            return self
-
-        # TODO: make this --dry-run compatible
-        src_file = self.cur_file
-        base_dir = os.path.dirname(src_file)
-        top_func = get_top_func(src_file)
-
-        # ------------------------------- Paths
-        # The design files generated by Phism
-        phism_syn_vhdl_dir = os.path.join(
-            base_dir, "proj", "solution1", "impl", "ip", "hdl", "vhdl"
-        )
-        # The ip files used in the design files by Phism
-        phism_syn_ip_dir = os.path.join(
-            base_dir, "proj", "solution1", "impl", "ip", "hdl", "ip"
-        )
-        # The test bench files
-        tbgen_sim_vhdl_dir = os.path.join(base_dir, "tb", "solution1", "sim", "vhdl")
-
-        # Sanity check
-        assert os.path.isdir(phism_syn_vhdl_dir), f"{phism_syn_vhdl_dir} doens't exist."
-        assert os.path.isdir(phism_syn_ip_dir), f"{phism_syn_ip_dir} doens't exist."
-        assert os.path.isdir(tbgen_sim_vhdl_dir), f"{tbgen_sim_vhdl_dir} doens't exist."
-
-        # ------------------------------- Copy and paste files
-        # Copy and paste the design files.
-        design_files = glob.glob(os.path.join(phism_syn_vhdl_dir, "*.*"))
-        assert design_files, "There should exist design files."
-        for f in design_files:
-            shutil.copy(f, tbgen_sim_vhdl_dir)
-        self.logger.debug(
-            f"Design files found and copied: \n" + "\n".join(design_files)
-        )
-        # Copy and paste the ip design files.
-        ip_design_files = glob.glob(os.path.join(phism_syn_ip_dir, "*.v"))
-        assert ip_design_files, "There should exist design files."
-        for f in ip_design_files:
-            # Prepend the `timescale setting to the beginning of each ip design file.
-            helper.prepend_to_file(
-                shutil.copy(f, tbgen_sim_vhdl_dir), "`timescale 1ns/1ps"
-            )
-
-        self.logger.debug(f"IP files found and copied: \n" + "\n".join(ip_design_files))
-
-        # ------------------------------- Update the top design
-        phism_top = os.path.join(phism_syn_vhdl_dir, f"{top_func}.vhd")
-        assert os.path.isfile(phism_top), f"The top module {phism_top} should exist."
-        autotb = os.path.join(tbgen_sim_vhdl_dir, f"{top_func}.autotb.vhd")
-        assert os.path.isfile(autotb), f"The autotb file {autotb} should exist."
-        newtop = os.path.join(tbgen_sim_vhdl_dir, f"{top_func}.vhd")
-        vhdl.update_source_by_testbench(
-            phism_top,
-            autotb,
-            newtop,
-            top_func,
-            logger=self.logger,
-        )
-
-        # ------------------------------- Overwrite the prj file.
-        # Overwrite the project file list to include files from Phism
-        vhdl.create_prj_file(tbgen_sim_vhdl_dir, top_func)
-
-        # TODO: Overwrite the test vectors in tv/
-
-        # ------------------------------- Remove cached design files
-        # Otherwise the cosimulation may continue with errors using the old design files
-        xsim_dir = os.path.join(tbgen_sim_vhdl_dir, "xsim.dir")
-        if os.path.isdir(xsim_dir):
-            shutil.rmtree(xsim_dir)
-            self.logger.debug(f"{xsim_dir} has been removed.")
-
-        return self
-
-    def run_cosim(self):
-        """Run cosim.tcl"""
-        if not self.options.cosim:
-            self.logger.debug("cosim is skipped since --cosim has not been set.")
-            return self
-
-        src_file = self.cur_file
-        base_dir = os.path.dirname(src_file)
-        sim_dir = os.path.join(base_dir, "tb", "solution1", "sim", "verilog")
-
-        self.run_command(
-            cmd="bash run_xsim.sh",
-            shell=True,
-            stdout=open(os.path.join(base_dir, "cosim.stdout.log"), "w"),
-            stderr=open(os.path.join(base_dir, "cosim.stderr.log"), "w"),
-            cwd=sim_dir,
-        )
-
-        return self
 
     def scop_decomposition_for_cpu(self):
         """Extract the top function and all the stuff it calls."""
@@ -2096,10 +1278,16 @@ class PbFlow(PhismRunner):
     def mlir_opt_chain_for_cpu(self):
         """mlir-opt CHAIN for CPU."""
         
+        if self.options.only_kernel_transformation:
+            return self
+
         # If there is no main() in mlir, it is useless to further transform it for cpu
         if self.options.keep_only_kernel_no_main_in_mlir is True:
             return self
         
+
+        # if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
+        #     return self
 
         assert self.cur_file.endswith(".mlir"), "Should be an MLIR file."
 
@@ -2133,9 +1321,16 @@ class PbFlow(PhismRunner):
     def translate_mlir_to_llvmir_for_cpu(self):
         """mlir-opt CHAIN for CPU."""
 
+        if self.options.only_kernel_transformation:
+            return self
+
         # If there is no main() in mlir, it is useless to further transform it for cpu
         if self.options.keep_only_kernel_no_main_in_mlir is True:
             return self
+        
+
+        # if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
+        #     return self
 
         assert self.cur_file.endswith(".mlir"), "Should be an MLIR file."
 
@@ -2172,9 +1367,15 @@ class PbFlow(PhismRunner):
     def compile_bin_for_cpu(self):
         """Compile bin for CPU."""
 
+        if self.options.only_kernel_transformation:
+            return self
+
         # If there are no main() in mlir, it is useless to further compile it for cpu
         if self.options.keep_only_kernel_no_main_in_mlir is True:
             return self
+
+        # if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
+        #     return self
 
         assert self.cur_file.endswith(".ll"), "Should be an mlir (i.e. *.ll) file."
 
@@ -2231,11 +1432,19 @@ class PbFlow(PhismRunner):
     def run_bin_on_cpu(self, force_skip=False):
         """Run the 'cpu.exe' file. Assuming the 'cpu.exe' file has been generated/compiled."""
 
+        if self.options.only_kernel_transformation:
+            return self
+
         # If there are no main() in mlir, it is useless to run it for cpu
         if self.options.keep_only_kernel_no_main_in_mlir is True:
             return self
 
-        if not self.options.run_bin_on_cpu:
+        # # Default
+        # if not self.options.run_bin_on_cpu:
+        #     return self
+        
+        # Testing
+        if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
             return self
 
         assert self.cur_file.endswith(".exe"), "Should be a cpu exe (i.e. *.exe) file."
@@ -2247,28 +1456,50 @@ class PbFlow(PhismRunner):
         if os.path.isfile(log_file):
             os.remove(log_file)
 
-        self.run_command(
-            # cmd_list=["papi_command_line", "--debug", "PAPI_REF_CYC", "PAPI_TOT_CYC", f".{cpu_bin_file}"],
-            cmd=" ".join(
-                [
-                    # f"{cpu_bin_file}"
-                    # "papi_command_line", "--debug", "PAPI_REF_CYC", "PAPI_TOT_CYC", f".{cpu_bin_file}"
-                    (
-                        f"papi_command_line --debug PAPI_REF_CYC PAPI_TOT_CYC .{cpu_bin_file}"
-                        if self.options.enable_papi is True
-                        else f"{cpu_bin_file}"
-                    ),
-                ]
-            ),
-            stdout=open(log_file, "w"),
-            stderr=open(os.path.join(base_dir, "cpu-exe.stderr.log"), "w"), # dumped arrays are out through stderr
-            shell=True,
-            env=self.env
-        )
+        try:
+            self.run_command(
+                # cmd_list=["papi_command_line", "--debug", "PAPI_REF_CYC", "PAPI_TOT_CYC", f".{cpu_bin_file}"],
+                cmd=" ".join(
+                    [
+                        # f"{cpu_bin_file}"
+                        # "papi_command_line", "--debug", "PAPI_REF_CYC", "PAPI_TOT_CYC", f".{cpu_bin_file}"
+                        (
+                            f"papi_command_line --debug PAPI_REF_CYC PAPI_TOT_CYC .{cpu_bin_file}"
+                            if self.options.enable_papi is True
+                            else f"{cpu_bin_file}"
+                        ),
+                    ]
+                ),
+                stdout=open(log_file, "w"),
+                stderr=open(os.path.join(base_dir, "cpu-exe.stderr.log"), "w"), # dumped arrays are out through stderr
+                shell=True,
+                env=self.env
+            )
+
+        # If any kernel execution get failed due to programming error, it should be caught as an exception. Niether next functions in the process chain won't be called.
+        except Exception as e:
+            # Important!! Setting it up will activate handle_kernel_execution_error() handler
+            self.is_kernel_execution_error_found = True
+            # # Log the error and continue
+            # # print(f"Execution error: {e}. Stderr logged in {os.path.join(base_dir, 'cpu-exe.stderr.log')}")
+            # self.status = 1
+            # self.errmsg = e
+
+            # # Log stack
+            # self.logger.error(traceback.format_exc())
+        
         return self
+
 
     def verify_benchmark_result(self, no_diff=False):
         """Verify the result with *.golden.out."""
+
+        if self.options.only_kernel_transformation:
+            return self
+        
+        # If there is an kernel execution error, there is no point in result checking
+        if self.is_kernel_execution_error_found:
+            return self
 
         # If there are no main() in mlir, it is useless to run it for cpu and verify the result
         if self.options.keep_only_kernel_no_main_in_mlir is True:
@@ -2276,6 +1507,9 @@ class PbFlow(PhismRunner):
 
         if not self.options.verify_benchmark_result:
             return self
+        
+
+        
 
         assert self.cur_file.endswith(".exe"), "Should be an exe file."
 
@@ -2300,8 +1534,8 @@ class PbFlow(PhismRunner):
         )
 
         # Collect the results as python list
-        golden_result_list = filter_result(golden_result_file_path)
-        bin_result_list = filter_result(result_out_file)
+        golden_result_list = get_regex_filtered_result_list(golden_result_file_path)
+        bin_result_list = get_regex_filtered_result_list(result_out_file)
 
         # # Deliberately create error
         # bin_result_list.pop(5)
@@ -2310,39 +1544,36 @@ class PbFlow(PhismRunner):
         # Prepare .diff file to be written
         result_diff_file = result_out_file.replace(".out", ".diff")
 
+
+        # (Very important) Create the empty ".diff" file
+        # Ensure the file exists or create it empty if not
+        open(result_diff_file, "a").close()
+
+
+        # Boolen to set & check
+        # Difference between "is_mismatch_found" and "self.is_result_mismatch_error_found" is
+        # "is_mismatch_found" is local to this function. And just used to make initial decision. Even if the initial mismatch is found, still later we have to check for expected tolerance.
+        # "self.is_result_mismatch_error_found" is global and used for final decision making.
+        is_mismatch_found = False
+
+        # Prepare placeholders for summary and detailed differences
+        summary = []
+        details = []
+        mismatched_indices = []
+        differences = []
+
         # Compare 2 lists
         # Success
         if golden_result_list == bin_result_list:
-            print(f"Result matches for kernel {kernel_name}!!!!!!!!!!!!!!!!!")
-            with open(result_diff_file, "w") as diff:
-                diff.write("Results match!.\n")
-                diff.close()
+            # Nothing to do
+            # self.status = 0
+            self.is_result_mismatch_error_found = False
+            pass
+
+
         else:
-            print(f"Result Doesn't matches for kernel {kernel_name}!!!!!! Please Check ", result_diff_file)
-            # Prepare placeholders for summary and detailed differences
-            summary = []
-            details = []
-            mismatched_indices = []
-            differences = []
-
-            # Generate details and collect mismatched data
-            if len(golden_result_list) != len(bin_result_list):
-                summary.append(f"Golden & {kernel_name} results have different lengths.")
-                summary.append(f"Golden list length: {len(golden_result_list)}")
-                summary.append(f"{kernel_name} list length: {len(bin_result_list)}")
-
-                # Extra elements in longer list
-                if len(golden_result_list) > len(bin_result_list):
-                    summary.append("Extra elements in golden_result_list:")
-                    summary.append(f"{golden_result_list[len(bin_result_list):]}")
-                else:
-                    summary.append("Extra elements in bin_result_list:")
-                    summary.append(f"{bin_result_list[len(golden_result_list):]}")
-
-                # Write the summary first, then the details
-                with open(result_diff_file, "w") as diff:
-                    diff.write("\n".join(summary) + "\n")
-                    diff.close()
+            # Result mismatch found!!!
+            # Now we have to check if that mismatch is in accepeted tolerance
 
             # Find mismatched indices and calculate differences
             for i, (golden, bin_res) in enumerate(zip(golden_result_list, bin_result_list)):
@@ -2353,61 +1584,573 @@ class PbFlow(PhismRunner):
                     details.append(f"Index {i}: Golden -> {golden}, {kernel_name} -> {bin_res}")
 
             if is_mismatch_found:
+                
+
                 # Calculate the number of mismatched cells and average difference
                 mismatched_count = len(mismatched_indices)
                 avg_difference = sum(differences) / mismatched_count if mismatched_count > 0 else 0
 
-                # Prepare the summary
-                summary.append(f"Result mismatched for kernel {kernel_name}!!!!")
-                summary.append(f"Num of mismatched cells: {mismatched_count} among total {len(golden_result_list)}")
-                summary.append(f"Average difference of mismatched values: {avg_difference:.6f}")
 
-                # Write the summary first, then the details
-                with open(result_diff_file, "w") as diff:
-                    diff.write("\n".join(summary) + "\n")
-                    diff.write("Differences found at the following indices:\n")
-                    diff.write("\n".join(details) + "\n")
-                    diff.close()
+                # If the size of the result arrays are different
+                if len(golden_result_list) != len(bin_result_list):
 
-        
-        # Open the result_diff_file in read mode to collect the contents in a variable
-        with open(result_diff_file, "r") as diff_file:
-            file_content = diff_file.read()
-            diff_file.close()
+                    self.is_result_mismatch_error_found = True
 
+                    # Never set the error status here. because that will break the self.function() call chain and get out of the transformation + verification process
+                    # self.status = 1
+
+                    # Prepare the summary
+
+                    # Common mismatch msg
+                    summary.append(f"Result mismatched {kernel_name}")
+                    
+                    summary.append(f"Golden & {kernel_name} results have different lengths.")
+                    summary.append(f"Golden list length: {len(golden_result_list)}")
+                    summary.append(f"{kernel_name} list length: {len(bin_result_list)}")
+
+                    # Extra elements in longer list
+                    if len(golden_result_list) > len(bin_result_list):
+                        summary.append("Extra elements in golden_result_list:")
+                        summary.append(f"{golden_result_list[len(bin_result_list):]}")
+                    else:
+                        summary.append("Extra elements in bin_result_list:")
+                        summary.append(f"{bin_result_list[len(golden_result_list):]}")
+
+                
+                # Create error status
+                #TODO: Have to check for error defining thereshold and formula
+                #TODO: Have define different status codes for success & error
+                elif avg_difference > self.options.error_threshold:
+
+                    self.is_result_mismatch_error_found = True
+
+                    # Never set the error status here. because that will break the self.function() call chain and get out of the transformation + verification process
+                    # self.status = 1
+                    
+                    # Prepare the summary
+                    summary.append(f"Result mismatched {kernel_name}")
+
+                    summary.append(f"mismatched cells: {mismatched_count} among {len(golden_result_list)}")
+                    summary.append(f"Average result diff: {avg_difference:.6f}")
+                    summary.append(f"Differences found at the following indices:\n")
+
+                    
+                # # Write the summary first, then the details
+                # with open(result_diff_file, "w") as diff:
+                #     diff.write("\n".join(summary) + "\n")
+                #     diff.write("Differences found at the following indices:\n")
+                #     diff.write("\n".join(details) + "\n")
+                #     diff.close()
+            
+            # No result verification error
+            else:
+                pass
+
+            
+        # # Open the result_diff_file in read mode to collect the contents in a variable
+        # # Contents will be passed to the 
+        # with open(result_diff_file, "r") as diff_file:
+        #     file_content = diff_file.read()
+        #     diff_file.close()
+
+
+        # Mismatch error
+        if self.is_result_mismatch_error_found:
+            combined_result_mismatch_error_list = summary + details
+            # Join the contents into a single string
+            diff_file_content = "\n".join(combined_result_mismatch_error_list)
+
+        # No Mismatch found
+        else:
+            summary.append(f"Result matched {kernel_name}!!")
+            diff_file_content = "".join(summary)
+
+        # print("diff_file_content", diff_file_content)
 
         self.run_command(
             shell=True,
             text=True,   # Treat input/output as text
-            cmd_list=["tee", result_diff_file],  # Replace with your desired command
+            cmd=f"tee {result_diff_file}",  # Replace with your desired command
             stdout=subprocess.PIPE,     # Optional: Capture `tee` output (not needed here)
             stderr=subprocess.PIPE,     # Optional: Capture errors
-            input=file_content,  # Pass file content directly, it will not work with stdin
-            env=self.env,
+            input=diff_file_content,  # Pass file content directly, it will not work with stdin
+            env=self.env
         )
 
         return self
 
-def pb_flow_process(d: str, work_dir: str, options: PbFlowOptions):
-    """Process a single example."""
+
+    def dump_kernel_profile_logs_to_file(self):
+        """
+        create 2 log files named "cpu.profile.log" & "cpu.profile.err.log"
+
+        "cpu.profile.log":
+        exec success case: execution time would be read from "cpu-exe.stdout.log", and written to "cpu.profile.log"
+        exec error case: will be set to "0.00"
+        self.options.verify_benchmark_result case: will be set to "0.00"
+
+        "cpu.profile.err.log":
+        Handle execution & verification error. There will be 2 types error cases. (determined by checking "cpu-exe.stderr.log" file).
+        1. Only for cpu execution (compiled without "-D POLYBENCH_DUMP_ARRAY").
+        2. Verfication after cpu execution (compiled with "-D POLYBENCH_DUMP_ARRAY").
+
+        1st case: You will see NO data. Because you didn't compiled with "-D POLYBENCH_DUMP_ARRAY"
+        "
+        malloc(): corrupted top size
+        Aborted (core dumped)
+        "
+
+        2nd case: You will see data. Because you compiled with "-D POLYBENCH_DUMP_ARRAY"
+        "
+        ==BEGIN DUMP_ARRAYS==
+        begin dump: cov
+        0.00 
+        ....
+        2671147320.85 
+        end   dump: cov
+        ==END   DUMP_ARRAYS==
+        double free or corruption (!prev)
+        Aborted (core dumped)
+        "
+        """
+
+        if self.options.only_kernel_transformation:
+            return self
+
+        if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
+            return self
+
+
+        # print("I am hit from dump kernel profile", get_top_func(self.cur_file))
+
+        # VERY IMPORTANT
+        # For error case & self.options.verify_benchmark_result enabled case, "0.00" will be written to "cpu.profile.log"
+        # Default value to be written for execution error case
+        value_to_write_in_the_file = 0.00
+
+        # Format the number as a string with two decimal places
+        default_formatted_zero_value = f"{value_to_write_in_the_file:.2f}"
+
+
+
+        base_dir = os.path.dirname(self.cur_file)
+
+        # For Success case: cpu.profile.log
+        profile_log_file = os.path.join(base_dir, "cpu.profile.log")
+
+        # Ensure the file exists or create it empty if not
+        open(profile_log_file, "a").close()
+
+
+        # For Error case: cpu.profile.err.log
+        # Create a "cpu.profile.err.log". Other process might check this file to make decision.
+        # Or those process can also check self.is_kernel_execution_error_found property to make decisions.
+        # Both of the choices are open. Feel free to use any one
+        profile_err_log_file = os.path.join(base_dir, "cpu.profile.err.log")
+
+        # Ensure the "kern_name.cpu.profile.err.log" file exists or create it empty if not
+        open(profile_err_log_file, "a").close()
+
+
+
+        if self.is_kernel_execution_error_found:
+
+            # Prepapre "cpu-exe.stderr.log" to read
+            cpu_stderr_log_file = os.path.join(os.path.dirname(self.get_kernel_name_with_path()), "cpu-exe.stderr.log")
+
+            # Read the "cpu-exe.stderr.log"
+            with open(cpu_stderr_log_file, "r") as file:
+                cpu_stderr_log_file_content = file.read()
+                file.close()
+            
+            # Error message patterns to match
+            # error_msg_patterns = [
+            #     r"double free or corruption \(!prev\)\nAborted \(core dumped\)",  # for verification error
+            #     r"malloc\(\): corrupted top size\nAborted \(core dumped\)"       # for execution error
+            # ]
+            error_msg_patterns = ERROR_DICTIONARY["EXECUTION_ERROR"]["ERROR_MSG_MATCH_CASES"]
+
+            # Retrive matches
+            matches = [match.group() for each_err_pattern in error_msg_patterns if (match := re.search(each_err_pattern, cpu_stderr_log_file_content))]
+
+            # print("matches", matches)
+
+            # Declare empty content arrar for the error log file
+            error_content = []
+
+            # Handle error
+            if matches:
+                error_content.append('Error:\n')
+                error_content.extend(matches)
+
+                # Write the error logs to the "cpu.profile.err.log" file
+                with open(profile_err_log_file, "w") as error_file:
+                    error_file.write("".join(error_content))
+                    error_file.close()
+        
+            
+
+            # For execution error, put "0.00" in the "cpu.profile.log" file
+            self.run_command(
+                shell=True,
+                text=True,   # Treat input/output as text
+                cmd=f"echo {default_formatted_zero_value} | tee {profile_log_file}",
+                stdout=subprocess.PIPE,     # Optional: Capture `tee` output (not needed here)
+                stderr=subprocess.PIPE,     # Optional: Capture errors
+                env=self.env
+            )
+
+        elif self.is_result_mismatch_error_found:
+
+            # Result mismatch has been already written to ".diff"  file.
+            # Find that file to read the error log
+            result_diff_file = self.cur_file.replace(".exe", ".diff")
+
+            # print("result_diff_file", result_diff_file)
+
+            # Read the ".diff"
+            with open(result_diff_file, "r") as file:
+                result_diff_file_content = file.read()
+                file.close()
+            
+
+            # Dump the result mismatch logs to the "cpu.profile.err.log" file
+            with open(profile_err_log_file, "w") as error_file:
+                error_file.write(result_diff_file_content)
+                error_file.close()
+
+
+            # For result_mismatch_error, put "0.00" in the "cpu.profile.log" file
+            self.run_command(
+                shell=True,
+                text=True,   # Treat input/output as text
+                cmd=f"echo {default_formatted_zero_value} | tee {profile_log_file}",
+                stdout=subprocess.PIPE,     # Optional: Capture `tee` output (not needed here)
+                stderr=subprocess.PIPE,     # Optional: Capture errors
+                env=self.env
+            )
+
+        else:
+            # print("No std Error match found.")
+            cpu_stdout_log_file = os.path.join(base_dir, "cpu-exe.stdout.log")
+
+            if not os.path.isfile(cpu_stdout_log_file):
+                raise Exception(cpu_stdout_log_file, "cpu-exe.stdout.log doesn't exist")
+            
+            
+            # (IMPORTANT) Handle "self.options.verify_benchmark_result"
+            # If the file "cpu-exe.stdout.log" is empty, set the value to "0.00"
+            with open(cpu_stdout_log_file, "r") as file:
+                cpu_stdout_log_file_content = file.read()
+                file.close()
+
+            # Empty Means only the result verification has been run
+            if not cpu_stdout_log_file_content:
+                # Write "0.00" to "cpu.profile.log"
+                with open(profile_log_file, "w") as file:
+                    file.write(default_formatted_zero_value)
+                    file.close()
+
+            else:
+
+                self.run_command(
+                    shell=True,
+                    text=True,   # Treat input/output as text
+                    cmd_list=[f"tee {profile_log_file} < {cpu_stdout_log_file}"],  # Redirects the content of cpu_stdout_log_file to tee.
+                    stdout=subprocess.PIPE,     # Optional: Capture `tee` output (not needed here)
+                    stderr=subprocess.PIPE,     # Optional: Capture errors
+                    env=self.env
+                )
+        return self
+
+
+
+
+# This function should be always be used after checking transformation error
+def is_kernel_execution_error_found(kernel_dir: str):
+    
+    is_execution_error_found = False
+
+    # For Error case: cpu.profile.err.log
+    kernel_profile_err_log_file = os.path.join(kernel_dir, "cpu.profile.err.log")
+
+    # if the "cpu.profile.err.log" is not created, then transformation error occurred
+    if not os.path.isfile(kernel_profile_err_log_file):
+        return is_execution_error_found
+
+    else:
+        # Read the error logs to the "cpu.profile.err.log" file
+        with open(kernel_profile_err_log_file, "r") as error_file:
+            # Normalize, Ensure the input content has consistent newline characters (\n).
+            kernel_profile_err_log_file_content = error_file.read().replace("\r\n", "\n").replace("\r", "\n")
+            error_file.close()
+
+
+        # !IMPORTANT, this has been set in "dump_kernel_profile_logs_to_file() function"
+        # error_pattern_to_match = r"^Error.*\n(.*)"
+        error_pattern_to_match = ERROR_DICTIONARY["EXECUTION_ERROR"]["ERR_PROFILE_LOG_MATCH_CASE"]
+
+        error_match = re.search(error_pattern_to_match, kernel_profile_err_log_file_content, re.MULTILINE)
+
+        if error_match:
+            is_execution_error_found = True
+            return is_execution_error_found
+        else:
+            return is_execution_error_found
+
+
+
+
+# If compiler transformation error happens, "transformation.error.log" file doesn't get created in the first place.
+def is_kernel_transformation_error(kernel_dir: str):
+
+    # Default error state
+    is_kern_transformation_error_found = False
+
+    # First check if the error is thrown from the cpu execution
+    # Because execution error is not transformation error
+    if is_kernel_execution_error_found(kernel_dir):
+        return is_kern_transformation_error_found
+
+
+
+    # Check if there is an execution error
+    # Find & set the path for "transformation.error.log"
+    transformation_error_log_file = os.path.join(
+        kernel_dir,
+        "transformation.error.log"
+    )
+
+
+    # If compiler transformation error happens, this file doesn't get created in the first place
+    if os.path.isfile(transformation_error_log_file):
+        is_kern_transformation_error_found = True
+
+
+    return is_kern_transformation_error_found
+
+
+
+def fetch_kernel_execution_time(kernel_dir: str):
+    """Fetch the execution time."""
+    
+    # For Success case: cpu.profile.log
+    profile_log_file = os.path.join(kernel_dir, "cpu.profile.log")
+
+    # Read the "cpu-exe.stderr.log"
+    with open(profile_log_file, "r") as file:
+        # default read will return '0.00\n'. So need to strip() special hidden characters
+        profile_log_file_content = file.read().strip()
+        file.close()
+
+
+    if profile_log_file_content:
+        return float(profile_log_file_content)
+    else:
+        return 0.00
+
+    
+
+def fetch_kernel_error_status(kernel_dir: str):
+    """
+    2 type of Error status will be checked + collected from "cpu.profile.err.log":
+    1. Execution error:
+    2. Verification result mismatch error:
+    """
+    
+    # For Error case: cpu.profile.err.log
+    profile_err_log_file = os.path.join(kernel_dir, "cpu.profile.err.log")
+
+
+
+    # Read the "cpu-exe.stderr.log"
+    with open(profile_err_log_file, "r") as error_file:
+        # Normalize, Ensure the input content has consistent newline characters (\n).
+        profile_err_log_file_content = error_file.read().replace("\r\n", "\n").replace("\r", "\n")
+        error_file.close()
+
+    # print("profile_err_log_file_content", repr(profile_err_log_file_content))
+
+
+    # Primary search keyword to make decision that there is an error
+    # execution_error_keyword_pattern = r"^Error.*\n(.*)"
+    execution_error_keyword_pattern = ERROR_DICTIONARY["EXECUTION_ERROR"]["ERR_PROFILE_LOG_MATCH_CASE"]
+
+
+    # Result mismatch search keyword to make decision that there is result verification error
+    # result_mismatch_keyword_pattern = r"^Result mismatched.*\n(.*)"
+    result_mismatch_keyword_pattern = ERROR_DICTIONARY["VERIFICATION_ERROR"]["ERR_PROFILE_LOG_MATCH_CASE"]
+
+    
+    # Step 1: Check for the keyword "Error"
+    # re.MULTILINE: This flag ensures that regex can match patterns line by line.
+    if re.search(execution_error_keyword_pattern, profile_err_log_file_content, re.MULTILINE):
+
+        extract_error_msg = re.search(execution_error_keyword_pattern, profile_err_log_file_content, re.MULTILINE).group(0).replace("\n", " ")  # Replace '\n' with space
+
+        return extract_error_msg
+    
+    # Step 2: Check for result verification mismatch msg
+    elif re.search(result_mismatch_keyword_pattern, profile_err_log_file_content):
+
+        # Extract mismatch msg
+        extract_mismatch_error_msg = re.search(result_mismatch_keyword_pattern, profile_err_log_file_content, re.MULTILINE).group(0).replace("\n", " ")  # Replace '\n' with space
+
+        return extract_mismatch_error_msg
+
+    # No error case
+    else:
+        return "No Error"
+
+
+
+def pb_flow_process(relative_temp_kernel_dir: str, work_dir: str, options: PbFlowOptions):
+    """Process a single example.
+
+    relative_temp_kernel_dir (str): Relative path of temporary kernel dir where the transformations will be dumped (e.g. ./tmp-umbria/umbria-cpu-flow/single-polymer-example/umbria-pb-flow.tmp/linear-algebra/kernels/2mm)
+
+    work_dir (str): Abs path of the root temp kernel dir. (e.g. /abs/path/to/polsca-forked-umbria/tmp-umbria/umbria-cpu-flow/single-polymer-example/umbria-pb-flow.tmp/linear-algebra/kernels/2mm)
+    """
     # Make sure the example directory and the work directory are both absolute paths.
     # TODO: make it clear what is d.
-    d = os.path.abspath(d)
+    
+    temp_kernel_abs_dir = os.path.abspath(relative_temp_kernel_dir)
+
+
+    # Root Temporary folder where all the transformations are dumped (e.g. tmp-umbria/umbria-cpu-flow/single-polymer-example/umbria-pb-flow.tmp)
     work_dir = os.path.abspath(work_dir)
 
+
     flow = PbFlow(work_dir, options)
-    src_file = os.path.join(d, os.path.basename(d) + ".c")
+    src_file = os.path.join(temp_kernel_abs_dir, os.path.basename(temp_kernel_abs_dir) + ".c")
 
-    start = timer()
+    # Run the whole process on the kernel *.c file (transformation + run)
     flow.run(src_file)
-    end = timer()
 
-    if not options.dry_run:
-        print(
-            '>>> Finished {:15s} elapsed: {:.6f} secs   Status: {}  Error: "{}"'.format(
-                os.path.basename(d), (end - start), flow.status, flow.errmsg
-            )
+    
+    
+    # Check for different kind of error found
+    # Always have to check this "only_kernel_transformation" first
+    if options.only_kernel_transformation:
+        if not options.dry_run:
+
+            if is_kernel_transformation_error(temp_kernel_abs_dir):
+                
+                print(
+                    '>>> Transformation Error occured for {:15s}  Status: {}  Error: "{}"'.format(
+                        os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
+                    )
+                )
+            else:
+                # print("I am hit", is_kernel_transformation_error(temp_kernel_abs_dir))
+                print(
+                    '>>> Transformation Successfull for {:15s}  Status: {}  Error: "{}"'.format(
+                        os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
+                    )
+                )
+
+    elif options.run_bin_on_cpu or options.verify_benchmark_result or options.sanity_check:
+
+        if not options.dry_run:
+
+            if is_kernel_transformation_error(temp_kernel_abs_dir):
+                    
+                # print("I am hit", is_kernel_transformation_error(temp_kernel_abs_dir))
+                print(
+                    '>>> Transformation Error occured {:15s}  Status: {}  Error: "{}"'.format(
+                        os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
+                    )
+                )
+
+            elif is_kernel_execution_error_found(temp_kernel_abs_dir):
+
+                print(
+                    '>>> Execution error occured {:15s}  Status: {}  Error: "{}"'.format(
+                        os.path.basename(temp_kernel_abs_dir), flow.status, fetch_kernel_error_status(temp_kernel_abs_dir)
+                    )
+                )
+            
+            else:
+                # Retrieve dir of the "kernel_name.cpu.profile.log"
+                profile_log_file = os.path.join(
+                    temp_kernel_abs_dir,
+                    "cpu.profile.log"
+                )
+
+                # Read the "kernel_name.cpu.profile.log"
+                with open(profile_log_file, "r") as file:
+                    profile_log_content = file.read()
+                    file.close()
+
+                print(
+                    '>>> Finished {:15s} elapsed: {:.6f} secs   Status: {}  Error: "{}"'.format(
+                        os.path.basename(temp_kernel_abs_dir), float(profile_log_content), flow.status, flow.errmsg
+                    )
+                )
+
+    # For performance benchmark and success case
+    else:
+        pass
+
+
+
+
+
+
+
+
+def discover_examples(
+    d: str, examples: Optional[List[str]] = None, excludes: Optional[List[str]] = None
+) -> List[str]:
+    """Find examples in the given directory. Returns absolute path"""
+    if not examples:
+        examples = POLYBENCH_EXAMPLES
+
+    return sorted(
+        [
+            # os.path.abspath(root)  # Convert to absolute path
+            root  # Convert to absolute path
+            for root, _, _ in os.walk(d)
+            if os.path.basename(root).lower() in examples
+            and os.path.basename(root).lower() not in excludes
+        ]
+    )
+
+
+
+def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
+    """Process the result directory from pb-flow runs."""
+    records = []
+    assert os.path.isdir(result_work_dir), f"{result_work_dir} doens't exist."
+
+    final_kernel_relative_dir_list = discover_examples(
+        result_work_dir,    # i.e. options.work_dir,
+        examples=options.examples,
+        excludes=options.excl
+    )
+
+    # print(final_kernel_relative_dir_list)
+
+    # Create records for each directory
+    records = [
+        Record(
+            os.path.basename(kernel_dir),  # kernel name
+            # "dummy-operation-name",
+            # here is "operation_name" field
+            (
+                "cpu-execution" if options.run_bin_on_cpu else 
+                "verification" if options.verify_benchmark_result else 
+                "transformation" if options.only_kernel_transformation else 
+                "unknown"  # Optional fallback if none of the options are True
+            ),
+
+            0.00 if is_kernel_transformation_error(kernel_dir) else fetch_kernel_execution_time(kernel_dir),
+            "transformation error" if is_kernel_transformation_error(kernel_dir) else fetch_kernel_error_status(kernel_dir)
         )
+        for kernel_dir in final_kernel_relative_dir_list
+    ]
+
+    return records
 
 
 def pb_flow_dump_report(options: PbFlowOptions):
@@ -2417,12 +2160,21 @@ def pb_flow_dump_report(options: PbFlowOptions):
     print(df)
     print("\n")
 
-    df.to_csv(os.path.join(options.work_dir, f"pb-flow.report.{get_timestamp()}.csv"))
+
+    df.to_csv(
+        os.path.join(
+            options.work_dir,
+            f"pb-flow.report.{get_timestamp()}.csv"
+        )
+    )
 
 
 def pb_flow_runner(options: PbFlowOptions, dump_report: bool = True):
     """Run pb-flow with the provided arguments."""
     assert os.path.isdir(options.source_dir)
+
+    # print("options.source_dir", options.source_dir)
+    # print("options.work_dir", options.work_dir)
 
     if not options.examples:
         options.examples = POLYBENCH_EXAMPLES

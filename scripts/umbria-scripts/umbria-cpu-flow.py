@@ -13,7 +13,8 @@ from pyphism_umbria_cpu_flow.polybench import pb_flow
 def main():
     """Main entry"""
     parser = argparse.ArgumentParser(description="Run Polybench experiments")
-    parser.add_argument("source_dir", type=str, help="Polybench directory")
+    # parser.add_argument("source_dir", type=str, help="Polybench directory")
+    parser.add_argument("--source-dir", type=str, help="Polybench directory")
     parser.add_argument("--work-dir", type=str, help="The temporary work directory.")
     parser.add_argument(
         "-e", "--examples", nargs="+", default=[], help="Polybench examples to run."
@@ -121,6 +122,19 @@ def main():
         "--verify-benchmark-result",
         action="store_true",
         help="Verify the result from the polybench benchmark.",
+    )
+
+    parser.add_argument(
+        "--error-threshold",
+        type=float,
+        default=0.00000001,
+        help="Set float error threshold to verify the result."
+    )
+
+    parser.add_argument(
+        "--only-kernel-transformation",
+        action="store_true",
+        help="Only transform the kernel. No host"
     )
 
     args = parser.parse_args()
