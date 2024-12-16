@@ -93,12 +93,12 @@ def main():
         action="store_true",
         help="This will dump the *.golden.out result to test.",
     )
-    
+
     parser.add_argument(
-        "--keep-only-kernel-no-main-in-mlir",
+        "--only-kernel-transformation",
         action="store_true",
-        help="Donot keep the main() function in MLIR code. Just keep the kernel function",
-    )
+        help="Only transform the kernel. No host"
+    )    
 
     parser.add_argument(
         "--clang-no-opt-bin",
@@ -132,7 +132,7 @@ def main():
     )
 
     parser.add_argument(
-        "--only-kernel-transformation",
+        "--dump-csv-report",
         action="store_true",
         help="Only transform the kernel. No host"
     )
@@ -143,7 +143,7 @@ def main():
 
     print(f"Options: {options}")
 
-    pb_flow.pb_flow_runner(options)
+    pb_flow.pb_flow_runner(options, options.dump_csv_report)
 
 
 if __name__ == "__main__":

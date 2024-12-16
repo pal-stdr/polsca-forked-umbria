@@ -38,11 +38,11 @@ class PhismRunnerOptions:
 
     # Umbria add
     source_file: str = ""  # input source file (--source-dir)
-    keep_only_kernel_no_main_in_mlir: bool = False  # Default False
+    only_kernel_transformation: bool = False # If True, then there will be no "main()" in MLIR. Check also "extract_top_func_for_cpu()"
     clang_no_opt_bin: bool = False  # Default enable clang NO loop unrolling (--disable-loop-unrolling)
     run_bin_on_cpu: bool = False  # Default False
     dump_test_data_cpu: bool = False  # Default False
     enable_papi: bool = False  # Default False
     verify_benchmark_result: bool = False  # Default False
     error_threshold: float = 0.00000001
-    only_kernel_transformation: bool = False
+    dump_csv_report: bool = False

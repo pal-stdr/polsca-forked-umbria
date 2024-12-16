@@ -45,7 +45,7 @@ POLYBENCH_EXAMPLES = (
     "gramschmidt",
     "heat-3d",
     "jacobi-1d",
-    "jacobi-2d",  # Result problem
+    "jacobi-2d",  # Result fails for polymer. But only polybench works
     "lu",
     "ludcmp",
     "mvt",
@@ -62,7 +62,7 @@ POLYBENCH_EXAMPLES = (
 ERROR_DICTIONARY = {
     "EXECUTION_ERROR": {
         "ERR_PROFILE_LOG_MATCH_CASE": r"^Error.*\n(.*)",
-        "ERROR_MSG_MATCH_CASES": [
+        "ERROR_MSG_MATCH_CASES": [ # It will be checked from "dump_kernel_profile_logs_to_file()"
             r"double free or corruption \(!prev\)\nAborted \(core dumped\)",  # typically happens for verification error
             r"malloc\(\): corrupted top size\nAborted \(core dumped\)"       # typically happens for execution error
         ]
@@ -74,17 +74,14 @@ ERROR_DICTIONARY = {
 
 
 
-# RECORD_FIELDS = (
-#     "name",
-#     "run_status",
-#     "latency",
-#     "res_usage",
-#     "res_avail",
-# )
+
 RECORD_FIELDS = (
     "name",
-    "operation_name",
+    "type",
+    "polymer",
     "time",
+    "execution_err",
+    "verification_err",
     "run_status",
 )
 
@@ -154,12 +151,6 @@ def get_project_root():
 
 
 
-# ----------------------- Data record fetching functions -----------------------
-
-
-
-
-
 # ----------------------- Data processing ---------------------------
 
 # Umbria add
@@ -197,53 +188,27 @@ def get_regex_filtered_result_list(result_file: str):
     return result_list
 
 
-def is_list_record(x):
-    return isinstance(
-        x,
-        (
-            Record,
-        )
-    )
-
-
-def flatten_record(record):
-    """Flatten a Record object into a list."""
-    return list(
-        itertools.chain(*[list(x) if is_list_record(x) else [x] for x in record])
-    )
-
-
-def to_pandas(records):
-    """From processed records to pandas DataFrame."""
-    # cols = list(itertools.chain(*[expand_field(field) for field in RECORD_FIELDS]))
-    cols = list(itertools.chain([field for field in RECORD_FIELDS]))
-    data = list([flatten_record(r) for r in records])
-    data.sort(key=lambda x: x[0])
-
-    # NOTE: dtype=object here prevents pandas converting integer to float.
-    return pd.DataFrame(data=data, columns=cols, dtype=object)
-
-
 
 
 # ----------------------- Benchmark runners ---------------------------
 
 
-# def discover_examples(
-#     d: str, examples: Optional[List[str]] = None, excludes: Optional[List[str]] = None
-# ) -> List[str]:
-#     """Find examples in the given directory."""
-#     if not examples:
-#         examples = POLYBENCH_EXAMPLES
+def discover_examples(
+    d: str, examples: Optional[List[str]] = None, excludes: Optional[List[str]] = None
+) -> List[str]:
+    """Find examples in the given directory."""
+    if not examples:
+        examples = POLYBENCH_EXAMPLES
 
-#     return sorted(
-#         [
-#             root
-#             for root, _, _ in os.walk(d)
-#             if os.path.basename(root).lower() in examples
-#             and os.path.basename(root).lower() not in excludes
-#         ]
-#     )
+    return sorted(
+        [
+            # os.path.abspath(root)  # Convert to absolute path
+            root
+            for root, _, _ in os.walk(d)
+            if os.path.basename(root).lower() in examples
+            and os.path.basename(root).lower() not in excludes
+        ]
+    )
 
 
 def get_phism_env():
@@ -378,8 +343,8 @@ class PbFlow(PhismRunner):
                 .sanity_check()
                 # .split_statements()   # It doesn't work
                 # .extract_top_func() # It is doing scop_decomp inside
-                .extract_top_func_for_cpu() # if self.options.keep_only_kernel_no_main_in_mlir==True, it is going to remove main() from MLIR code
-                .scop_decomp_for_cpu() # if self.options.loop_transforms==True, it will be activated
+                .extract_top_func_for_cpu() # if self.options.only_kernel_transformation==True, it is going to remove main() from MLIR code
+                .scop_decomposition_for_cpu() # if self.options.loop_transforms==True, it will be activated
                 .sanity_check()
                 # .polymer_opt()
                 .polymer_opt_for_cpu()
@@ -460,69 +425,18 @@ class PbFlow(PhismRunner):
             subprocess.check_output(["which", program], env=self.env), "utf-8"
         ).strip()
 
-    def prep_polybench_c_macro_compile_flags(self):
-
-        # if self.options.sanity_check is not True:
-        #     return f"-D {self.options.dataset}_DATASET -D POLYBENCH_TIME -D POLYBENCH_PAPI -I {os.path.join(self.papi_installation_dir, 'include')} -L {os.path.join(self.papi_installation_dir, 'lib')} -lpapi"
-        # else:
-        #     return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS"
-
-        # Base flags
-        flags = [
-
-        ]
-
-        # If sanity check is enabled
-        if self.options.sanity_check or self.options.verify_benchmark_result:
-            # Turn off the papi
-            self.options.enable_papi = False
-
-            # Use MINI dataset by default, or SMALL if explicitly specified
-            dataset = self.options.dataset if self.options.dataset in ("MINI", "SMALL", "MEDIUM", "LARGE") else "MINI"
-            flags += [f"-D {dataset}_DATASET", "-D POLYBENCH_DUMP_ARRAYS"]
-        else:
-            flags += [f"-D {self.options.dataset}_DATASET"]
-        
-        # If papi is enabled (papi needs "-D POLYBENCH_TIME") (If sanity_check is enabled, it will automatically deactivate the papi)
-        if self.options.enable_papi:
-            flags += ["-D POLYBENCH_PAPI", "-D POLYBENCH_TIME", f"-I {os.path.join(self.papi_installation_dir, 'include')}", f"-L {os.path.join(self.papi_installation_dir, 'lib')}", "-lpapi"]
-
-
-        # (sanity_check or verify_results or enable_papi) if any one of them is eanabled, donot add "-D POLYBENCH_TIME"
-        if self.options.sanity_check or self.options.verify_benchmark_result or self.options.enable_papi:
-            pass
-        else:
-            if "-D POLYBENCH_TIME" not in flags:
-                flags += ["-D POLYBENCH_TIME"]
-        
-
-        # If user wants only the kernel transformation, then we need to replace/remove all the previously added flags.
-        # Because earlier flags are for executabls
-        if self.options.only_kernel_transformation:
-            kernel_name = get_top_func(self.cur_file)
-            flags = [f"--function=kernel_{kernel_name}"]
-            return " ".join(flags)
-
-        # print(flags)
-
-        # Join flags into a single string
-        return " ".join(flags)
-
-            
     def get_golden_out_file(self) -> str:
         path = os.path.basename(self.cur_file)
         return os.path.join(
             os.path.dirname(self.cur_file), path.split(".")[0] + ".golden.out"
         )
     
-
     def get_kernel_name_with_path(self) -> str:
         path = os.path.basename(self.cur_file)
         return os.path.join(
             os.path.dirname(self.cur_file), path.split(".")[0]
         )
     
-
     def dump_test_data(self):
         """Compile and dump test data for sanity check."""
         if not self.options.sanity_check:
@@ -552,60 +466,6 @@ class PbFlow(PhismRunner):
                     #     "14.0.0",
                     #     "include",
                     # ),
-                    os.path.join(
-                        self.llvm_build_dir,
-                        "lib",
-                        "clang",
-                        "14.0.0",
-                        "include",
-                    ),
-                    "-lm",
-                    self.cur_file,
-                    os.path.join(self.work_dir, "utilities", "polybench.c"),
-                    "-o",
-                    exe_file,
-                ]
-            ),
-            shell=True,
-            env=self.env,
-        )
-        self.run_command(
-            cmd=exe_file,
-            stderr=open(out_file, "w"),
-            env=self.env,
-        )
-
-        return self
-
-    def dump_test_data_for_cpu(self):
-        """Compile and dump test data for result verification."""
-
-        if self.options.only_kernel_transformation:
-            return self
-
-        # If there are no main() in mlir, it is useless to run it for cpu and verify the result
-        if self.options.keep_only_kernel_no_main_in_mlir is True:
-            return self
-
-        if not self.options.dump_test_data_cpu:
-            return self
-
-        # With papi activated, we will only do the performance test
-        if self.options.enable_papi is True:
-            return self
-
-
-        out_file = self.get_golden_out_file()
-        exe_file = self.cur_file.replace(".c", ".exe")
-        self.run_command(
-            cmd=" ".join(
-                [
-                    self.get_program_abspath("clang"),
-                    # if self.options.sanity_check==True: then return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS", else "-D {self.options.dataset}_DATASET -D POLYBENCH_TIME"
-                    self.prep_polybench_c_macro_compile_flags(),
-                    "-I",
-                    os.path.join(self.work_dir, "utilities"),
-                    "-I",
                     os.path.join(
                         self.llvm_build_dir,
                         "lib",
@@ -676,43 +536,6 @@ class PbFlow(PhismRunner):
                     #     "14.0.0",
                     #     "include",
                     # ),
-                    os.path.join(
-                        self.llvm_build_dir,
-                        "lib",
-                        "clang",
-                        "14.0.0",
-                        "include",
-                    ),
-                    "-I",
-                    os.path.join(self.work_dir, "utilities"),
-                ]
-            ),
-            stdout=open(self.cur_file, "w"),
-            shell=True,
-            env=self.env,
-        )
-        return self
-
-    def compile_c_for_cpu(self):
-        """Compile C code to MLIR using mlir-clang. If the --sanity-check is true, then it will not be called. Because '-D POLYBENCH_TIME' will be activated for production compile to measure time. '-D POLYBENCH_TIME' make the sanity check to fail."""
-
-        src_file, self.cur_file = self.cur_file, self.cur_file.replace(".c", ".mlir")
-
-        # print(self.prep_polybench_c_macro_compile_flags())
-
-        self.run_command(cmd=f'sed -i "s/static//g" {src_file}', shell=True)
-        self.run_command(
-            cmd=" ".join(
-                [
-                    self.get_program_abspath("mlir-clang"),
-                    src_file,
-                    "-memref-fullrank",
-                    "-raise-scf-to-affine",
-                    "-S",
-                    "-O0",
-                    # prepare flags (e.g. "-D {}_DATASET", "-D POLYBENCH_DUMP_ARRAYS", "-D POLYBENCH_PAPI", "-D POLYBENCH_TIME") based on condition "sanity_check", "verify_benchmark_result", "enable_papi"
-                    self.prep_polybench_c_macro_compile_flags(),
-                    "-I",
                     os.path.join(
                         self.llvm_build_dir,
                         "lib",
@@ -839,88 +662,6 @@ class PbFlow(PhismRunner):
             src_file,
             f'-extract-top-func="name={get_top_func(src_file)} keepall={self.options.sanity_check}"',
             "-scop-decomp" if self.options.loop_transforms else "",
-            "-debug",
-        ]
-        self.run_command(
-            cmd=" ".join(args),
-            shell=True,
-            stderr=open(log_file, "w"),
-            stdout=open(self.cur_file, "w"),
-            env=self.env,
-        )
-        return self
-
-    def extract_top_func_for_cpu(self):
-        """Extract the top function and all the stuff it calls. 'keep_only_kernel_no_main_in_mlir' option is very important. Because if it is false, then "main()" is going to be removed from the MLIR code, and you cannot test with CPU flow."""
-
-        # print("I am hit - for deriche")
-
-        if self.options.only_kernel_transformation is True or self.options.keep_only_kernel_no_main_in_mlir is True:
-            keep_all = False
-        else:
-            keep_all = True
-
-
-        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
-            ".mlir", ".ex-top-func.mlir"
-        )
-
-        log_file = self.cur_file.replace(".mlir", ".log")
-        args = [
-            self.get_program_abspath("phism-opt"),
-            src_file,
-            f'-extract-top-func="name={get_top_func(src_file)} keepall={keep_all}"',
-            "-debug",
-        ]
-        self.run_command(
-            cmd=" ".join(args),
-            shell=True,
-            stderr=open(log_file, "w"),
-            stdout=open(self.cur_file, "w"),
-            env=self.env,
-        )
-        return self
-
-    def extract_top_func_and_scop_decomp_for_cpu(self):
-        """Extract the top function and all the stuff it calls. 'keep_main_func_in_mlir' option is very important. Because if it is false, then main() is going to be removed from the MLIR code, and you cannot test with CPU flow."""
-
-        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
-            ".mlir", ".ex-top-func.sd.mlir"
-        )
-
-        log_file = self.cur_file.replace(".mlir", ".log")
-        args = [
-            self.get_program_abspath("phism-opt"),
-            src_file,
-            f'-extract-top-func="name={get_top_func(src_file)} keepall={self.options.keep_main_func_in_mlir}"',
-            "-scop-decomp" if self.options.loop_transforms else "",
-            "-debug",
-        ]
-        self.run_command(
-            cmd=" ".join(args),
-            shell=True,
-            stderr=open(log_file, "w"),
-            stdout=open(self.cur_file, "w"),
-            env=self.env,
-        )
-        return self
-
-    def scop_decomp_for_cpu(self):
-        """Extract the top function and all the stuff it calls. 'keep_main_func_in_mlir' option is very important. Because if it is false, then main() is going to be removed from the MLIR code, and you cannot test with CPU flow."""
-
-        if self.options.loop_transforms is not True:
-            return self
-
-
-        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
-            ".mlir", ".sd.mlir"
-        )
-
-        log_file = self.cur_file.replace(".mlir", ".log")
-        args = [
-            self.get_program_abspath("phism-opt"),
-            src_file,
-            "-scop-decomp",
             "-debug",
         ]
         self.run_command(
@@ -1164,21 +905,194 @@ class PbFlow(PhismRunner):
         return self
 
 
-    def scop_decomposition_for_cpu(self):
-        """Extract the top function and all the stuff it calls."""
-        if not self.options.loop_transforms:
-            return self
+
+
+    def prep_polybench_c_macro_compile_flags(self):
+
+        # if self.options.sanity_check is not True:
+        #     return f"-D {self.options.dataset}_DATASET -D POLYBENCH_TIME -D POLYBENCH_PAPI -I {os.path.join(self.papi_installation_dir, 'include')} -L {os.path.join(self.papi_installation_dir, 'lib')} -lpapi"
+        # else:
+        #     return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS"
+
+        # Base flags
+        flags = [
+
+        ]
+
+        # If sanity check is enabled
+        if self.options.sanity_check or self.options.verify_benchmark_result:
+            # Turn off the papi
+            self.options.enable_papi = False
+
+            # Use MINI dataset by default, or SMALL if explicitly specified
+            dataset = self.options.dataset if self.options.dataset in ("MINI", "SMALL", "MEDIUM", "LARGE") else "MINI"
+            flags += [f"-D {dataset}_DATASET", "-D POLYBENCH_DUMP_ARRAYS"]
+        else:
+            flags += [f"-D {self.options.dataset}_DATASET"]
         
+        # If papi is enabled (papi needs "-D POLYBENCH_TIME") (If sanity_check is enabled, it will automatically deactivate the papi)
+        if self.options.enable_papi:
+            flags += ["-D POLYBENCH_PAPI", "-D POLYBENCH_TIME", f"-I {os.path.join(self.papi_installation_dir, 'include')}", f"-L {os.path.join(self.papi_installation_dir, 'lib')}", "-lpapi"]
+
+
+        # (sanity_check or verify_results or enable_papi) if any one of them is eanabled, donot add "-D POLYBENCH_TIME"
+        if self.options.sanity_check or self.options.verify_benchmark_result or self.options.enable_papi:
+            pass
+        else:
+            if "-D POLYBENCH_TIME" not in flags:
+                flags += ["-D POLYBENCH_TIME"]
+        
+
+        # If user wants only the kernel transformation, then we need to replace/remove all the previously added flags.
+        # Because earlier flags are for executabls
+        if self.options.only_kernel_transformation:
+            kernel_name = get_top_func(self.cur_file)
+            flags = [f"--function={kernel_name}"]
+            return " ".join(flags)
+
+        # print("I am hit", flags)
+
+        # Join flags into a single string
+        return " ".join(flags)
+
+
+    def dump_test_data_for_cpu(self):
+        """Compile and dump test data for result verification."""
+
+        if self.options.only_kernel_transformation:
+            return self
+
+
+        if not self.options.dump_test_data_cpu:
+            return self
+
+        # With papi activated, we will only do the performance test
+        if self.options.enable_papi is True:
+            return self
+
+
+        out_file = self.get_golden_out_file()
+        exe_file = self.cur_file.replace(".c", ".exe")
+        self.run_command(
+            cmd=" ".join(
+                [
+                    self.get_program_abspath("clang"),
+                    # if self.options.sanity_check==True: then return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS", else "-D {self.options.dataset}_DATASET -D POLYBENCH_TIME"
+                    self.prep_polybench_c_macro_compile_flags(),
+                    "-I",
+                    os.path.join(self.work_dir, "utilities"),
+                    "-I",
+                    os.path.join(
+                        self.llvm_build_dir,
+                        "lib",
+                        "clang",
+                        "14.0.0",
+                        "include",
+                    ),
+                    "-lm",
+                    self.cur_file,
+                    os.path.join(self.work_dir, "utilities", "polybench.c"),
+                    "-o",
+                    exe_file,
+                ]
+            ),
+            shell=True,
+            env=self.env,
+        )
+        self.run_command(
+            cmd=exe_file,
+            stderr=open(out_file, "w"),
+            env=self.env,
+        )
+
+        return self
+
+
+    def compile_c_for_cpu(self):
+        """Compile C code to MLIR using mlir-clang. If the --sanity-check is true, then it will not be called. Because '-D POLYBENCH_TIME' will be activated for production compile to measure time. '-D POLYBENCH_TIME' make the sanity check to fail."""
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(".c", ".mlir")
+
+        # print(self.prep_polybench_c_macro_compile_flags())
+
+        self.run_command(cmd=f'sed -i "s/static//g" {src_file}', shell=True)
+        self.run_command(
+            cmd=" ".join(
+                [
+                    self.get_program_abspath("mlir-clang"),
+                    src_file,
+                    "-memref-fullrank",
+                    "-raise-scf-to-affine",
+                    "-S",
+                    "-O0",
+                    # prepare flags (e.g. "-D {}_DATASET", "-D POLYBENCH_DUMP_ARRAYS", "-D POLYBENCH_PAPI", "-D POLYBENCH_TIME") based on condition "sanity_check", "verify_benchmark_result", "enable_papi"
+                    self.prep_polybench_c_macro_compile_flags(),
+                    "-I",
+                    os.path.join(
+                        self.llvm_build_dir,
+                        "lib",
+                        "clang",
+                        "14.0.0",
+                        "include",
+                    ),
+                    "-I",
+                    os.path.join(self.work_dir, "utilities"),
+                ]
+            ),
+            stdout=open(self.cur_file, "w"),
+            shell=True,
+            env=self.env,
+        )
+        return self
+
+
+    def extract_top_func_for_cpu(self):
+        """Extract the top function and all the stuff it calls. 'only_kernel_transformation' option is very important. Because if it is true, then "main()" is going to be removed from the MLIR code, and you cannot test with CPU flow."""
+
+        # print("I am hit - for deriche")
+
+        if self.options.only_kernel_transformation is True:
+            keep_all = False
+        else:
+            keep_all = True
+
+
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
-            ".mlir", ".sd-kern.mlir"
+            ".mlir", ".ex-top-func.mlir"
         )
 
         log_file = self.cur_file.replace(".mlir", ".log")
         args = [
             self.get_program_abspath("phism-opt"),
             src_file,
-            # f'-extract-top-func="name={get_top_func(src_file)} keepall={self.options.sanity_check}"',
-            # "-scop-decomp" if self.options.loop_transforms else "",
+            f'-extract-top-func="name={get_top_func(src_file)} keepall={keep_all}"',
+            "-debug",
+        ]
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+        return self
+
+
+    def scop_decomposition_for_cpu(self):
+        """Extract the top function and all the stuff it calls. 'keep_main_func_in_mlir' option is very important. Because if it is false, then main() is going to be removed from the MLIR code, and you cannot test with CPU flow."""
+
+        if self.options.loop_transforms is not True:
+            return self
+
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".sd.mlir"
+        )
+
+        log_file = self.cur_file.replace(".mlir", ".log")
+        args = [
+            self.get_program_abspath("phism-opt"),
+            src_file,
             "-scop-decomp",
             "-debug",
         ]
@@ -1191,43 +1105,6 @@ class PbFlow(PhismRunner):
         )
         return self
 
-    def loop_transforms_for_cpu(self):
-        """Run Phism loop transforms."""
-        if not self.options.loop_transforms:
-            return self
-
-        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
-            ".mlir", ".lt.mlir"
-        )
-        log_file = self.cur_file.replace(".mlir", ".log")
-
-        args = [
-            self.get_program_abspath("phism-opt"),
-            src_file,
-            # f'-loop-transforms="max-span={self.options.max_span}"',
-            "-inline-scop-affine",
-            "-affine-loop-unswitching",
-            "-anno-point-loop",
-            # "-outline-proc-elem='no-ignored'",    # This will activate all separate "PE_"
-            "-loop-redis-and-merge",
-            "-scop-stmt-inline",
-            # "-fold-if" if self.options.coalescing else "",
-            # "-demote-bound-to-if" if self.options.coalescing else "",
-            # "-fold-if",
-            "-debug-only=loop-transforms",
-        ]
-
-        args = self.filter_disabled(args)
-
-        self.run_command(
-            cmd=" ".join(args),
-            shell=True,
-            stderr=open(log_file, "w"),
-            stdout=open(self.cur_file, "w"),
-            env=self.env,
-        )
-
-        return self
 
     def polymer_opt_for_cpu(self):
         """Run polymer optimization."""
@@ -1275,19 +1152,57 @@ class PbFlow(PhismRunner):
 
         return self
 
+
+    def loop_transforms_for_cpu(self):
+        """Run Phism loop transforms."""
+        if not self.options.loop_transforms:
+            return self
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".lt.mlir"
+        )
+        log_file = self.cur_file.replace(".mlir", ".log")
+
+        args = [
+            self.get_program_abspath("phism-opt"),
+            src_file,
+            # f'-loop-transforms="max-span={self.options.max_span}"',
+            "-inline-scop-affine",
+            "-affine-loop-unswitching",
+            "-anno-point-loop",
+            # "-outline-proc-elem='no-ignored'",    # This will activate all separate "PE_"
+            "-loop-redis-and-merge",
+            "-scop-stmt-inline",
+            # "-fold-if" if self.options.coalescing else "",
+            # "-demote-bound-to-if" if self.options.coalescing else "",
+            # "-fold-if",
+            "-debug-only=loop-transforms",
+        ]
+
+        args = self.filter_disabled(args)
+
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+
+        return self
+
+
     def mlir_opt_chain_for_cpu(self):
         """mlir-opt CHAIN for CPU."""
         
         if self.options.only_kernel_transformation:
             return self
 
-        # If there is no main() in mlir, it is useless to further transform it for cpu
-        if self.options.keep_only_kernel_no_main_in_mlir is True:
+
+        # If one of the following options are not set, then continue for the the transformation
+        if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
             return self
         
-
-        # if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
-        #     return self
 
         assert self.cur_file.endswith(".mlir"), "Should be an MLIR file."
 
@@ -1318,19 +1233,18 @@ class PbFlow(PhismRunner):
 
         return self
 
+
     def translate_mlir_to_llvmir_for_cpu(self):
         """mlir-opt CHAIN for CPU."""
 
         if self.options.only_kernel_transformation:
             return self
 
-        # If there is no main() in mlir, it is useless to further transform it for cpu
-        if self.options.keep_only_kernel_no_main_in_mlir is True:
+
+        # If one of the following options are not set, then continue for the the transformation
+        if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
             return self
         
-
-        # if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
-        #     return self
 
         assert self.cur_file.endswith(".mlir"), "Should be an MLIR file."
 
@@ -1364,18 +1278,18 @@ class PbFlow(PhismRunner):
         )
         return self
     
+
     def compile_bin_for_cpu(self):
         """Compile bin for CPU."""
 
         if self.options.only_kernel_transformation:
             return self
 
-        # If there are no main() in mlir, it is useless to further compile it for cpu
-        if self.options.keep_only_kernel_no_main_in_mlir is True:
-            return self
 
-        # if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
-        #     return self
+        # If one of the following options are not set, then continue for the the transformation
+        if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
+            return self
+        
 
         assert self.cur_file.endswith(".ll"), "Should be an mlir (i.e. *.ll) file."
 
@@ -1429,23 +1343,24 @@ class PbFlow(PhismRunner):
         )
         return self    
     
-    def run_bin_on_cpu(self, force_skip=False):
-        """Run the 'cpu.exe' file. Assuming the 'cpu.exe' file has been generated/compiled."""
+
+    def run_bin_on_cpu(self):
+        """Run the 'cpu.exe' file. Assuming the 'cpu.exe' file has been generated/compiled.
+        
+        Some out files
+        cpu-exe.stdout.log: If "-D POLYBENCH_TIME" is active (i.e. performance flow), then the time taken for execution will be dumped to this file. But for kernel result verification flow, this file will be left empty.
+        cpu-exe.stderr.log: If "-D POLYBENCH_DUMP_ARRAY" is active (i.e. result verification flow), then the result will be dumped to this file for further result checking in next "verify_benchmark_result()" function in the chain. But for current setup, it has been found that, either for performance or result verification, it will be always populated with results.
+        
+        """
 
         if self.options.only_kernel_transformation:
             return self
 
-        # If there are no main() in mlir, it is useless to run it for cpu
-        if self.options.keep_only_kernel_no_main_in_mlir is True:
+
+        # If one of the following options are not set, then continue for the the transformation
+        if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
             return self
 
-        # # Default
-        # if not self.options.run_bin_on_cpu:
-        #     return self
-        
-        # Testing
-        if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
-            return self
 
         assert self.cur_file.endswith(".exe"), "Should be a cpu exe (i.e. *.exe) file."
         
@@ -1482,7 +1397,7 @@ class PbFlow(PhismRunner):
             self.is_kernel_execution_error_found = True
             # # Log the error and continue
             # # print(f"Execution error: {e}. Stderr logged in {os.path.join(base_dir, 'cpu-exe.stderr.log')}")
-            # self.status = 1
+            self.status = 1
             # self.errmsg = e
 
             # # Log stack
@@ -1492,7 +1407,12 @@ class PbFlow(PhismRunner):
 
 
     def verify_benchmark_result(self, no_diff=False):
-        """Verify the result with *.golden.out."""
+        """Verify the result with *.golden.out.
+        
+        kernel.bla.bla.out: Run the kernel.cpu.exe again and dump the resutl to this file.
+        kernel.bla.bla.diff: Compare the results in "kernel.bla.bla.out" vs "kernel.golden.out" and pipe/dump the comparison findings (i.e. "Result matched!!" or "Result mismatched!! Avg diff:..") to this file.
+
+        """
 
         if self.options.only_kernel_transformation:
             return self
@@ -1501,17 +1421,15 @@ class PbFlow(PhismRunner):
         if self.is_kernel_execution_error_found:
             return self
 
-        # If there are no main() in mlir, it is useless to run it for cpu and verify the result
-        if self.options.keep_only_kernel_no_main_in_mlir is True:
-            return self
 
         if not self.options.verify_benchmark_result:
             return self
         
 
         
+        
 
-        assert self.cur_file.endswith(".exe"), "Should be an exe file."
+        assert self.cur_file.endswith(".exe"), f"Should be an exe file. {self.cur_file}"
 
         # Collect golden.out file
         cpu_bin_file_name = os.path.basename(self.cur_file)
@@ -1628,10 +1546,10 @@ class PbFlow(PhismRunner):
                     # self.status = 1
                     
                     # Prepare the summary
-                    summary.append(f"Result mismatched {kernel_name}")
+                    summary.append(f"Result mismatched!!")
 
+                    summary.append(f"Avg diff: {avg_difference:.6f}")
                     summary.append(f"mismatched cells: {mismatched_count} among {len(golden_result_list)}")
-                    summary.append(f"Average result diff: {avg_difference:.6f}")
                     summary.append(f"Differences found at the following indices:\n")
 
                     
@@ -1687,20 +1605,20 @@ class PbFlow(PhismRunner):
         "cpu.profile.log":
         exec success case: execution time would be read from "cpu-exe.stdout.log", and written to "cpu.profile.log"
         exec error case: will be set to "0.00"
-        self.options.verify_benchmark_result case: will be set to "0.00"
+        self.options.verify_benchmark_result case: Will be set to "0.00". Because for such case, the "cpu-exe.stdout.log" is empty.
 
         "cpu.profile.err.log":
         Handle execution & verification error. There will be 2 types error cases. (determined by checking "cpu-exe.stderr.log" file).
         1. Only for cpu execution (compiled without "-D POLYBENCH_DUMP_ARRAY").
         2. Verfication after cpu execution (compiled with "-D POLYBENCH_DUMP_ARRAY").
 
-        1st case: You will see NO data. Because you didn't compiled with "-D POLYBENCH_DUMP_ARRAY"
+        1st error case: You will see NO data. Because you didn't compiled with "-D POLYBENCH_DUMP_ARRAY"
         "
         malloc(): corrupted top size
         Aborted (core dumped)
         "
 
-        2nd case: You will see data. Because you compiled with "-D POLYBENCH_DUMP_ARRAY"
+        2nd error case: You will see data. Because you compiled with "-D POLYBENCH_DUMP_ARRAY"
         "
         ==BEGIN DUMP_ARRAYS==
         begin dump: cov
@@ -1712,12 +1630,24 @@ class PbFlow(PhismRunner):
         double free or corruption (!prev)
         Aborted (core dumped)
         "
+
+
+        How this function works?
+
+        self.is_kernel_execution_error_found: Read "cpu-exe.stderr.log" and match for pre-defined regex based (i.e. "ERROR_DICTIONARY["EXECUTION_ERROR"]["ERROR_MSG_MATCH_CASES"]") error case. If the regex match found, then dump the error log to "cpu.profile.err.log". And write "0.00" to "cpu.profile.log".
+
+        self.is_result_mismatch_error_found: Read "kernel.bla.bla.diff", dump it to "cpu.profile.err.log". And write "0.00" to "cpu.profile.log".
+
+        else: The performance execution flow is running. So collect the execution time from "cpu-exe.stdout.log" and dump it to "cpu.profile.log".
+
         """
 
         if self.options.only_kernel_transformation:
             return self
 
-        if not self.options.run_bin_on_cpu or not self.options.verify_benchmark_result:
+
+        # If one of the following options are not set, then continue for the the transformation
+        if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
             return self
 
 
@@ -1866,6 +1796,11 @@ class PbFlow(PhismRunner):
 
 
 
+
+# ----------------------- Data record fetching functions -----------------------
+
+
+
 # This function should be always be used after checking transformation error
 def is_kernel_execution_error_found(kernel_dir: str):
     
@@ -1899,6 +1834,36 @@ def is_kernel_execution_error_found(kernel_dir: str):
             return is_execution_error_found
 
 
+def is_kernel_result_verification_error_found(kernel_dir: str):
+
+    is_result_verification_error_found = False
+
+    # For Error case: cpu.profile.err.log
+    kernel_profile_err_log_file = os.path.join(kernel_dir, "cpu.profile.err.log")
+
+    # if the "cpu.profile.err.log" is not created, then transformation error occurred
+    if not os.path.isfile(kernel_profile_err_log_file):
+        return is_result_verification_error_found
+
+    else:
+        # Read the error logs to the "cpu.profile.err.log" file
+        with open(kernel_profile_err_log_file, "r") as error_file:
+            # Normalize, Ensure the input content has consistent newline characters (\n).
+            kernel_profile_err_log_file_content = error_file.read().replace("\r\n", "\n").replace("\r", "\n")
+            error_file.close()
+
+
+        # !IMPORTANT, this has been set in "dump_kernel_profile_logs_to_file() function"
+        # error_pattern_to_match = r"^Error.*\n(.*)"
+        error_pattern_to_match = ERROR_DICTIONARY["VERIFICATION_ERROR"]["ERR_PROFILE_LOG_MATCH_CASE"]
+
+        error_match = re.search(error_pattern_to_match, kernel_profile_err_log_file_content, re.MULTILINE)
+
+        if error_match:
+            is_result_verification_error_found = True
+            return is_result_verification_error_found
+        else:
+            return is_result_verification_error_found
 
 
 # If compiler transformation error happens, "transformation.error.log" file doesn't get created in the first place.
@@ -1930,7 +1895,6 @@ def is_kernel_transformation_error(kernel_dir: str):
     return is_kern_transformation_error_found
 
 
-
 def fetch_kernel_execution_time(kernel_dir: str):
     """Fetch the execution time."""
     
@@ -1949,22 +1913,24 @@ def fetch_kernel_execution_time(kernel_dir: str):
     else:
         return 0.00
 
-    
 
-def fetch_kernel_error_status(kernel_dir: str):
+def fetch_kernel_execution_error_status(kernel_dir: str):
     """
-    2 type of Error status will be checked + collected from "cpu.profile.err.log":
-    1. Execution error:
-    2. Verification result mismatch error:
+    Error status will be checked + collected from "cpu.profile.err.log":
+    Check for Execution error status.
     """
     
     # For Error case: cpu.profile.err.log
-    profile_err_log_file = os.path.join(kernel_dir, "cpu.profile.err.log")
+    kernel_profile_err_log_file = os.path.join(kernel_dir, "cpu.profile.err.log")
 
+
+    # if the "cpu.profile.err.log" is not created, then transformation error occurred
+    if not os.path.isfile(kernel_profile_err_log_file):
+        return "Transformation error occurred."
 
 
     # Read the "cpu-exe.stderr.log"
-    with open(profile_err_log_file, "r") as error_file:
+    with open(kernel_profile_err_log_file, "r") as error_file:
         # Normalize, Ensure the input content has consistent newline characters (\n).
         profile_err_log_file_content = error_file.read().replace("\r\n", "\n").replace("\r", "\n")
         error_file.close()
@@ -1972,17 +1938,12 @@ def fetch_kernel_error_status(kernel_dir: str):
     # print("profile_err_log_file_content", repr(profile_err_log_file_content))
 
 
-    # Primary search keyword to make decision that there is an error
+    # Primary search keyword is to make decision that there is an error
     # execution_error_keyword_pattern = r"^Error.*\n(.*)"
     execution_error_keyword_pattern = ERROR_DICTIONARY["EXECUTION_ERROR"]["ERR_PROFILE_LOG_MATCH_CASE"]
 
-
-    # Result mismatch search keyword to make decision that there is result verification error
-    # result_mismatch_keyword_pattern = r"^Result mismatched.*\n(.*)"
-    result_mismatch_keyword_pattern = ERROR_DICTIONARY["VERIFICATION_ERROR"]["ERR_PROFILE_LOG_MATCH_CASE"]
-
     
-    # Step 1: Check for the keyword "Error"
+    # Check for the keyword "Error"
     # re.MULTILINE: This flag ensures that regex can match patterns line by line.
     if re.search(execution_error_keyword_pattern, profile_err_log_file_content, re.MULTILINE):
 
@@ -1990,8 +1951,45 @@ def fetch_kernel_error_status(kernel_dir: str):
 
         return extract_error_msg
     
-    # Step 2: Check for result verification mismatch msg
-    elif re.search(result_mismatch_keyword_pattern, profile_err_log_file_content):
+
+    # No error case
+    else:
+        return "No Error"
+
+
+def fetch_kernel_result_verification_error_status(kernel_dir: str):
+
+    """
+    Error status will be checked + collected from "cpu.profile.err.log":
+    Check for result mismatch error:
+    """
+    
+    # For Error case: cpu.profile.err.log
+    kernel_profile_err_log_file = os.path.join(kernel_dir, "cpu.profile.err.log")
+
+
+    # if the "cpu.profile.err.log" is not created, then transformation error occurred
+    if not os.path.isfile(kernel_profile_err_log_file):
+        return "Transformation error occurred."
+
+
+    # Read the "cpu-exe.stderr.log"
+    with open(kernel_profile_err_log_file, "r") as error_file:
+        # Normalize, Ensure the input content has consistent newline characters (\n).
+        profile_err_log_file_content = error_file.read().replace("\r\n", "\n").replace("\r", "\n")
+        error_file.close()
+
+    # print("profile_err_log_file_content", repr(profile_err_log_file_content))
+
+
+    # Result mismatch search keyword is to make decision that there is result verification error
+    # result_mismatch_keyword_pattern = r"^Result mismatched.*\n(.*)"
+    result_mismatch_keyword_pattern = ERROR_DICTIONARY["VERIFICATION_ERROR"]["ERR_PROFILE_LOG_MATCH_CASE"]
+
+    
+    # Check for the keyword "Result mismatched"
+    # re.MULTILINE: This flag ensures that regex can match patterns line by line.
+    if re.search(result_mismatch_keyword_pattern, profile_err_log_file_content):
 
         # Extract mismatch msg
         extract_mismatch_error_msg = re.search(result_mismatch_keyword_pattern, profile_err_log_file_content, re.MULTILINE).group(0).replace("\n", " ")  # Replace '\n' with space
@@ -2000,7 +1998,7 @@ def fetch_kernel_error_status(kernel_dir: str):
 
     # No error case
     else:
-        return "No Error"
+        return "No Error"    
 
 
 
@@ -2066,7 +2064,15 @@ def pb_flow_process(relative_temp_kernel_dir: str, work_dir: str, options: PbFlo
 
                 print(
                     '>>> Execution error occured {:15s}  Status: {}  Error: "{}"'.format(
-                        os.path.basename(temp_kernel_abs_dir), flow.status, fetch_kernel_error_status(temp_kernel_abs_dir)
+                        os.path.basename(temp_kernel_abs_dir), flow.status, fetch_kernel_execution_error_status(temp_kernel_abs_dir)
+                    )
+                )
+            
+            elif is_kernel_result_verification_error_found(temp_kernel_abs_dir):
+
+                print(
+                    '>>> Result verification error occured {:15s}  Status: {}  Error: "{}"'.format(
+                        os.path.basename(temp_kernel_abs_dir), flow.status, fetch_kernel_result_verification_error_status(temp_kernel_abs_dir)
                     )
                 )
             
@@ -2093,31 +2099,6 @@ def pb_flow_process(relative_temp_kernel_dir: str, work_dir: str, options: PbFlo
         pass
 
 
-
-
-
-
-
-
-def discover_examples(
-    d: str, examples: Optional[List[str]] = None, excludes: Optional[List[str]] = None
-) -> List[str]:
-    """Find examples in the given directory. Returns absolute path"""
-    if not examples:
-        examples = POLYBENCH_EXAMPLES
-
-    return sorted(
-        [
-            # os.path.abspath(root)  # Convert to absolute path
-            root  # Convert to absolute path
-            for root, _, _ in os.walk(d)
-            if os.path.basename(root).lower() in examples
-            and os.path.basename(root).lower() not in excludes
-        ]
-    )
-
-
-
 def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
     """Process the result directory from pb-flow runs."""
     records = []
@@ -2131,26 +2112,89 @@ def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
 
     # print(final_kernel_relative_dir_list)
 
-    # Create records for each directory
-    records = [
-        Record(
-            os.path.basename(kernel_dir),  # kernel name
-            # "dummy-operation-name",
-            # here is "operation_name" field
-            (
-                "cpu-execution" if options.run_bin_on_cpu else 
-                "verification" if options.verify_benchmark_result else 
-                "transformation" if options.only_kernel_transformation else 
-                "unknown"  # Optional fallback if none of the options are True
-            ),
+    # If performance run or verification of benchmark results, then use same format for log
+    if options.run_bin_on_cpu or options.verify_benchmark_result:
 
-            0.00 if is_kernel_transformation_error(kernel_dir) else fetch_kernel_execution_time(kernel_dir),
-            "transformation error" if is_kernel_transformation_error(kernel_dir) else fetch_kernel_error_status(kernel_dir)
-        )
-        for kernel_dir in final_kernel_relative_dir_list
-    ]
+        # Create records for each directory
+        records = [
+            Record (
+                os.path.basename(each_kernel_dir),  # kernel name
+                # "dummy-operation-name",
+                # here is "operation_name" field
+                (
+                    "cpu-execution" if options.run_bin_on_cpu else 
+                    "verification" if options.verify_benchmark_result else 
+                    "unknown"  # Optional fallback if none of the options are True
+                ),
+                "yes" if options.polymer else "no",
+                0.00 if is_kernel_transformation_error(each_kernel_dir) else fetch_kernel_execution_time(each_kernel_dir),
+                "yes" if is_kernel_execution_error_found(each_kernel_dir) else "no",
+                (
+                    "N/A" if options.run_bin_on_cpu else # For kernel performance execution, verification is not applicable
+                    "yes" if is_kernel_result_verification_error_found(each_kernel_dir) else "no"
+                ),
+                
+
+                (
+                    "transformation error" if is_kernel_transformation_error(each_kernel_dir) else
+                    fetch_kernel_execution_error_status(each_kernel_dir) if is_kernel_execution_error_found(each_kernel_dir) else
+                    fetch_kernel_result_verification_error_status(each_kernel_dir) if is_kernel_result_verification_error_found(each_kernel_dir) else
+                    "No Error"
+                )
+            )
+            for each_kernel_dir in final_kernel_relative_dir_list
+        ]
+    
+    elif options.only_kernel_transformation:
+        # Create records for each directory
+        records = [
+            Record(
+                os.path.basename(each_kernel_dir),  # kernel name
+                ( 
+                    "transformation" if options.only_kernel_transformation else 
+                    "unknown"  # Optional fallback if none of the options are True
+                ),
+                "yes" if options.polymer else "no",
+                0.00,   # Default 0.00
+                "N/A",
+                "N/A",
+                "Transformation Success" if not is_kernel_transformation_error(each_kernel_dir) else "Transformation Error"
+            )
+            for each_kernel_dir in final_kernel_relative_dir_list
+        ]
 
     return records
+
+
+
+# ----------------------- Panda Utilities -----------------------
+
+
+def is_list_record(x):
+    return isinstance(
+        x,
+        (
+            Record,
+        )
+    )
+
+
+def flatten_record(record):
+    """Flatten a Record object into a list."""
+    return list(
+        itertools.chain(*[list(x) if is_list_record(x) else [x] for x in record])
+    )
+
+
+def to_pandas(records):
+    """From processed records to pandas DataFrame."""
+    # cols = list(itertools.chain(*[expand_field(field) for field in RECORD_FIELDS]))
+    cols = list(itertools.chain([field for field in RECORD_FIELDS]))
+    data = list([flatten_record(r) for r in records])
+    data.sort(key=lambda x: x[0])
+
+    # NOTE: dtype=object here prevents pandas converting integer to float.
+    return pd.DataFrame(data=data, columns=cols, dtype=object)
 
 
 def pb_flow_dump_report(options: PbFlowOptions):
@@ -2167,6 +2211,10 @@ def pb_flow_dump_report(options: PbFlowOptions):
             f"pb-flow.report.{get_timestamp()}.csv"
         )
     )
+
+
+
+# ----------------------- Core Pbflow Runner -----------------------
 
 
 def pb_flow_runner(options: PbFlowOptions, dump_report: bool = True):
@@ -2206,7 +2254,7 @@ def pb_flow_runner(options: PbFlowOptions, dump_report: bool = True):
     print("Elapsed time: {:.6f} sec".format(end - start))
 
     # Will only dump report if Vitis has been run.
-    if dump_report and not options.skip_vitis:
+    if dump_report:
         print(">>> Dumping report ... ")
         pb_flow_dump_report(options)
 
