@@ -9,6 +9,11 @@ import shutil
 import subprocess
 import traceback
 
+# Unused (Called, but not under any use)
+from yaml import dump, load
+# Unused (Called, but not under any use)
+from yaml import CLoader as Loader
+
 from collections import namedtuple
 from dataclasses import dataclass, field
 from multiprocessing import Pool
@@ -20,8 +25,9 @@ import re
 
 import pandas as pd
 
-from pyphism_umbria_cpu_flow.phism_runner.options import PhismRunnerOptions
-from pyphism_umbria_cpu_flow.phism_runner.runner import PhismRunner
+# from pyphism_umbria_cpu_flow.phism_runner.options import PhismRunnerOptions
+from pyphism_umbria_cpu_flow.polybench.options import PhismRunnerOptions
+
 
 
 POLYBENCH_DATASETS = ("MINI", "SMALL", "MEDIUM", "LARGE", "EXTRALARGE")
@@ -271,7 +277,8 @@ def get_top_func(src_file):
 
 
 
-class PbFlow(PhismRunner):
+# class PbFlow(PhismRunner):
+class PbFlow():
     """Holds all the pb-flow functions.
     TODO: inherits this from PhismFlow.
     """
@@ -308,10 +315,37 @@ class PbFlow(PhismRunner):
         self.logger = logging.getLogger("pb-flow")
         self.logger.setLevel(logging.DEBUG)
 
+    # Unused
+    def setup_cfg(self):
+        """Find the corresponding configuration."""
+        if not self.options.cfg:
+            return
+        with open(self.options.cfg, "r") as f:
+            self.logger.info(f"Key is {self.options.key}")
+            cfg = load(f, Loader)
+            if self.options.key in cfg:
+                # NOTE: make sure you specify the configuration with the right key name.
+                if "options" not in cfg[self.options.key]:
+                    return
+                if not cfg[self.options.key]["options"]:
+                    return
+
+                for k, v in cfg[self.options.key]["options"].items():
+                    self.logger.info(f"Setting {k}={v}")
+                    self.options.__setattr__(k, v)
+
+    def filter_disabled(self, args):
+        # Filter out disabled passes.
+        return [
+            arg
+            for arg in args
+            if not self.options.disabled or arg not in self.options.disabled
+        ]
+
     def run(self, src_file):
         """Run the whole pb-flow on the src_file (*.c)."""
         self.options.key = os.path.basename(src_file).split(".")[0]
-        self.setup_cfg()
+        # self.setup_cfg()
         self.logger.info(self.options)
         self.cur_file = src_file
         self.c_source = src_file  # Will be useful in some later stages
