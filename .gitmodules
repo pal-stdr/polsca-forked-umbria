@@ -18,3 +18,11 @@
 [submodule "papi"]
 	path = papi
 	url = https://github.com/icl-utk-edu/papi.git
+[submodule "scalehls-umbria-forked"]
+	path = scalehls-umbria-forked
+	url = https://github.com/pal-stdr/scalehls-umbria-forked.git
+	branch = scalehls-umbria-dev
+[submodule "llvm-16-src"]
+	path = llvm-16-src
+	url = https://github.com/llvm/llvm-project.git
+	branch = release/16.x

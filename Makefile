@@ -4,16 +4,12 @@ phism=/workspace
 
 # Changed for umbria
 # vhls=/tools/Xilinx/2020.2
-th=1
-# example=2mm
 vhls=/opt/Xilinx/2022.2
+th=1
 # th=20
+
 # example=2mm
-# example=covariance
-# example=symm
-# example=deriche
-# example=jacobi-2d
-example=calibration
+
 
 
 
@@ -69,10 +65,10 @@ sync:
 # The absolute path to the directory of this script. (not used)
 PROJECT_ROOT_ABS_DIR=$(shell cd "$(dir $(abspath $(lastword $(MAKEFILE_LIST))))" && pwd)
 
-UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR=./tmp-umbria/umbria-cpu-flow
+UMBRIA_CPU_FLOW_RELATIVE_TMP_DIR=./tmp-umbria/umbria-cpu-flow
 
 clean-umbria-cpu:
-	rm -rf $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)
+	rm -rf $(UMBRIA_CPU_FLOW_RELATIVE_TMP_DIR)
 
 
 
@@ -146,55 +142,121 @@ clean-umbria-cpu:
 
 # --------------------- UMBRIA POLYBENCH CPU FLOW ---------------------
 
+UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR=$(UMBRIA_CPU_FLOW_RELATIVE_TMP_DIR)/polybench
+UMBRIA_POLYBENCH_PYTHON_SCRIPT=scripts/umbria-scripts/umbria-polybench-cpu-flow.py
+POLYBENCH_SRC_DIR=./example/polybench
+POLYBENCH_DATASET=SMALL
+POLYBENCH_EXAMPLE=2mm
+POLYBENCH_KERNELS=2mm
+EXCLUDE_POLYBENCH_KERNELS=symm doitgen fdtd-2d jacobi-2d nussinov
+
+
 # With Polymer
 
 
-# verify-one-polybench-kernel-with-polymer-example-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -p --source-dir ./example/polybench -e $(example) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/verify-single-polymer-example --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --sanity-check --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --dataset=SMALL
+verify-one-polybench-kernel-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -p --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polymer --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
 
 
-# test-one-polybench-kernel-with-polymer-example-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -p --source-dir ./example/polybench -e $(example) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/single-polymer-example --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=SMALL --dump-csv-report
-
-
-# verify-polybench-kernels-with-polymer-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -j $(th) -p --source-dir ./example/polybench --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polymer --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --dataset=SMALL --excl symm doitgen fdtd-2d
-
-
-# test-polybench-kernels-with-polymer-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -j $(th) -p --source-dir ./example/polybench --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/polybench-kernels-with-polymer --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=SMALL --dump-csv-report --excl symm doitgen fdtd-2d nussinov
+verify-polybench-kernels-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polymer --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_KERNELS)
 
 
 
-# transform-polybench-kernels-with-polymer-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -j $(th) -p --source-dir ./example/polybench --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-polybench-kernels-with-polymer --only-kernel-transformation --loop-transforms --dump-csv-report --excl symm doitgen fdtd-2d
+run-one-polybench-kernel-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -p --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-polybench-kernel-with-polymer --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --run-bin-on-cpu --dump-csv-report
 
 
-# transform-one-polybench-kernel-with-polymer-example-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -j $(th) -p --source-dir ./example/polybench -e $(example) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-single-polybench-kernel-with-polymer --only-kernel-transformation --loop-transforms --excl symm doitgen fdtd-2d
+run-polybench-kernels-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/run-polybench-kernels-with-polymer --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_POLYBENCH_KERNELS)
+
+
+
+compile-one-polybench-kernel-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -p --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/compile-one-polybench-kernel-with-polymer --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin
+
+
+compile-polybench-kernels-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/compile-polybench-kernels-with-polymer --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --dump-csv-report --excl $(EXCLUDE_POLYBENCH_KERNELS)
+
+
+
+transform-one-polybench-kernel-with-polymer-example-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -p --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-polybench-kernel-with-polymer --only-kernel-transformation --excl $(EXCLUDE_POLYBENCH_KERNELS)
+
+
+transform-polybench-kernels-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-polybench-kernels-with-polymer --only-kernel-transformation --dump-csv-report --excl $(EXCLUDE_POLYBENCH_KERNELS)
+
+
+
+
+
+# With Polymer + Scalehls
+
+
+transform-one-polybench-kernel-with-polymer-scalehls-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -p --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-polybench-kernel-with-polymer-scalehls --only-kernel-transformation --enable-scalehls
+
+
+transform-polybench-kernels-with-polymer-scalehls-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-polybench-kernels-with-polymer-scalehls --only-kernel-transformation --enable-scalehls --dump-csv-report
+
+
+
 
 
 # Without Polymer
 
-# verify-one-polybench-example-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py --source-dir ./example/polybench -e $(example) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/verify-single-polybench-example --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --sanity-check --verify-benchmark-result --error-threshold 0.00001 --dataset=SMALL
+
+verify-one-polybench-kernel-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001
 
 
-# test-one-polybench-example-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py --source-dir ./example/polybench -e $(example) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/single-polybench-example --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=SMALL
-
-
-# verify-polybench-kernels-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -j $(th) --source-dir ./example/polybench --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-example --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dataset=SMALL --dump-csv-report --excl symm doitgen fdtd-2d
-
-
-# test-polybench-kernels-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -j $(th) --source-dir ./example/polybench --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/polybench-example --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=LARGE --dump-csv-report --excl symm doitgen fdtd-2d jacobi-2d nussinov
+verify-polybench-kernels-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_KERNELS)
 
 
 
-# transform-polybench-kernels-umbria-cpu-flow:
-# 	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -j $(th) --source-dir ./example/polybench --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-kernel-polybench-example --only-kernel-transformation --loop-transforms --dump-csv-report --excl symm doitgen fdtd-2d
+run-one-polybench-kernel-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-polybench-kernel --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --run-bin-on-cpu
+
+
+run-polybench-kernels-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/run-polybench-kernels --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_POLYBENCH_KERNELS)
+
+
+
+compile-one-polybench-kernel-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/compile-one-polybench-kernel --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin
+
+
+compile-polybench-kernels-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/compile-polybench-kernels --dataset=$(POLYBENCH_DATASET) --clang-no-opt-bin --dump-csv-report --excl $(EXCLUDE_POLYBENCH_KERNELS)
+
+
+
+transform-one-polybench-kernel-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-polybench-kernel --dataset=$(POLYBENCH_DATASET) --only-kernel-transformation --dump-csv-report
+
+
+transform-polybench-kernels-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-polybench-kernels --dataset=$(POLYBENCH_DATASET) --only-kernel-transformation --dump-csv-report --excl $(EXCLUDE_POLYBENCH_KERNELS)
+
+
+
+
+
+# Without Polymer, but with Scalehls
+
+
+transform-one-polybench-kernel-with-scalehls-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_EXAMPLE) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-polybench-kernel-with-scalehls --only-kernel-transformation --enable-scalehls --dump-csv-report
+
+
+transform-polybench-kernels-with-scalehls-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/transform-polybench-kernels-with-scalehls --only-kernel-transformation --enable-scalehls --dump-csv-report --excl $(EXCLUDE_POLYBENCH_KERNELS)
+
 
 
 
@@ -203,84 +265,104 @@ clean-umbria-cpu:
 # --------------------- UMBRIA POLYBENCH BRAIN HSI CPU FLOW ---------------------
 
 
-UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR=$(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/brain-hsi
-UMBRIA_POLYBENCH_HSI_KERNELS=calibration spectral_correction normalization svm_score probability_estimate gen_rgb_color_matrix
+UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR=$(UMBRIA_CPU_FLOW_RELATIVE_TMP_DIR)/brain-hsi
+UMBRIA_BRAIN_HSI_PYTHON_SCRIPT=scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py
+BRAIN_HSI_KERNELS_SRC_DIR=./example/PolyBenchC-4.2.1-brain-HSI-without-path
+UMBRIA_BRAIN_HSI_EXAMPLE=calibration
+UMBRIA_BRAIN_HSI_KERNELS=calibration spectral_correction normalization svm_score probability_estimate gen_rgb_color_matrix brain_hsi
+EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS=brain_hsi
 
 
 
 # With Polymer
 
 
-verify-one-brain-hsi-kernel-with-polymer-example-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py -p --source-dir ./example/PolyBenchC-4.2.1-brain-HSI -e $(example) --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-single-polymer-example --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
+verify-one-brain-hsi-kernel-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLE) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernels-with-polymer --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
 
 
-test-one-brain-hsi-kernel-with-polymer-example-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py -p --source-dir ./example/PolyBenchC-4.2.1-brain-HSI -e $(example) --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/single-polymer-example --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=SMALL --dump-csv-report
-
-
-verify-polybench-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py -j $(th) -p --source-dir ./example/PolyBenchC-4.2.1-brain-HSI --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polymer --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --dataset=SMALL --excl symm doitgen fdtd-2d
-
-
-test-polybench-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py -j $(th) -p --source-dir ./example/PolyBenchC-4.2.1-brain-HSI --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/polybench-kernels-with-polymer --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=SMALL --dump-csv-report --excl symm doitgen fdtd-2d nussinov
+verify-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels-with-polymer --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
 
 
 
-transform-hsi-kernels-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py -j $(th) -p --source-dir ./example/PolyBenchC-4.2.1-brain-HSI --examples $(UMBRIA_POLYBENCH_HSI_KERNELS) --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-polybench-kernels-with-polymer --only-kernel-transformation --loop-transforms --dump-csv-report --excl symm doitgen fdtd-2d
+run-one-brain-hsi-kernel-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLE) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-with-polymer --clang-no-opt-bin --run-bin-on-cpu --dump-csv-report
 
 
-transform-one-hsi-kernel-with-polymer-example-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py -j $(th) -p --source-dir ./example/PolyBenchC-4.2.1-brain-HSI -e $(example) --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-single-hsi-kernel-with-polymer --only-kernel-transformation --loop-transforms --excl symm doitgen fdtd-2d
+run-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polymer --clang-no-opt-bin --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+
+
+
+compile-one-brain-hsi-kernel-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLE) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/compile-one-brain-hsi-kernel-with-polymer --clang-no-opt-bin
+
+
+compile-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/compile-brain-hsi-kernels-with-polymer --clang-no-opt-bin --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+
+
+
+transform-one-brain-hsi-kernel-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLE) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-polymer --only-kernel-transformation --dump-csv-report
+
+
+transform-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-polymer --only-kernel-transformation --dump-csv-report
+
+
+
+
+
+# With Polymer + Scalehls
+
+
+transform-one-brain-hsi-kernel-with-polymer-scalehls-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLE) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-polymer-scalehls --only-kernel-transformation --enable-scalehls
+
+
+transform-brain-hsi-kernels-with-polymer-scalehls-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-polymer-scalehls --only-kernel-transformation --enable-scalehls --dump-csv-report
+
+
 
 
 # Without Polymer
 
-verify-one-polybench-brain-hsi-example-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py --source-dir ./example/PolyBenchC-4.2.1-brain-HSI -e $(example) --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-single-polybench-example --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --sanity-check --verify-benchmark-result --error-threshold 0.00001 --dataset=SMALL
+verify-one-brain-hsi-kernel-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLE) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernel --dump-test-data-cpu --clang-no-opt-bin --sanity-check --verify-benchmark-result --error-threshold 0.00001
 
 
-test-one-polybench-brain-hsi-example-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py --source-dir ./example/PolyBenchC-4.2.1-brain-HSI -e $(example) --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/single-polybench-example --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=SMALL
+verify-brain-hsi-kernels-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels --dump-test-data-cpu --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
 
 
-verify-polybench-brain-hsi-kernels-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py -j $(th) --source-dir ./example/PolyBenchC-4.2.1-brain-HSI --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-example --dump-test-data-cpu --loop-transforms --clang-no-opt-bin --verify-benchmark-result --error-threshold 0.00001 --dataset=SMALL --dump-csv-report --excl symm doitgen fdtd-2d
+run-one-brain-hsi-kernel-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLE) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel --clang-no-opt-bin --run-bin-on-cpu --dump-csv-report
 
 
-test-polybench-brain-hsi-kernels-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py -j $(th) --source-dir ./example/PolyBenchC-4.2.1-brain-HSI --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/polybench-example --loop-transforms --clang-no-opt-bin --run-bin-on-cpu --dataset=LARGE --dump-csv-report --excl symm doitgen fdtd-2d jacobi-2d nussinov
-
-
-
-transform-polybench-brain-hsi-kernels-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py -j $(th) --source-dir ./example/PolyBenchC-4.2.1-brain-HSI --work-dir $(UMBRIA_POLYBENCH_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-kernel-polybench-example --only-kernel-transformation --loop-transforms --dump-csv-report --excl symm doitgen fdtd-2d
+run-brain-hsi-kernels-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels --clang-no-opt-bin --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
 
 
 
+transform-one-brain-hsi-kernel-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLE) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel --only-kernel-transformation --dump-csv-report
 
 
-
-
-
-# --------------------- Trash test ---------------------
-
-
-
-# Test array partition (ap = array partition)
-test-one-polymer-example-ap-active-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -p --ap -j $(th) ./example/polybench -e $(example) --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/single-polymer-example/umbria-pb-flow.tmp
+transform-brain-hsi-kernels-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels --only-kernel-transformation --dump-csv-report
 
 
 
 
-# Evaluate polybench (baseline) - need to be used in environment
-test-umbria-polybench-polygeist-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -c -j $(th) example/polybench --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/polybench-with-polygeist/umbria-pb-flow.tmp
+# Without Polymer, but with Scalehls
 
 
-# Evaluate polybench (polymer) - need to be used in environment
-test-umbria-polybench-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 scripts/umbria-scripts/umbria-polybench-cpu-flow.py -c -p -j $(th) example/polybench --work-dir $(UMBRIA_POLYBENCH_CPU_FLOW_RELATIVE_TMP_DIR)/polybench-with-polymer/umbria-pb-flow.tmp
+transform-one-brain-hsi-kernel-with-scalehls-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLE) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-scalehls --only-kernel-transformation --enable-scalehls --dump-csv-report
+
+
+transform-brain-hsi-kernels-with-scalehls-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-scalehls --only-kernel-transformation --enable-scalehls --dump-csv-report

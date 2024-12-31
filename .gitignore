@@ -206,6 +206,17 @@ polsca-build/
 polsca-build-installation/
 
 
+llvm-16-src-build/
+
+
+llvm-16-src-build-for-scalehls/
+llvm-16-src-build-for-scalehls-installation/
+
+
+scalehls-build/
+scalehls-build-installation/
+
+
 # Python virtual env
 py3env/
 
@@ -222,4 +233,9 @@ tmp-umbria/
 papi-7-1-0-t-installation/
 
 
+# Brain HSI kernel dirs
 example/PolyBenchC-4.2.1-brain-HSI/
+
+example/PolyBenchC-4.2.1-brain-HSI-without-path/
+
+example/PolyBenchC-4.2.1-brain-HSI-with-path/

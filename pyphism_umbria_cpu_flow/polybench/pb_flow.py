@@ -245,6 +245,7 @@ def get_phism_env():
         os.path.join(root_dir, "polygeist-build-for-polsca", "mlir-clang"),
         os.path.join(root_dir, "polymer-build-for-polsca", "bin"),
         os.path.join(root_dir, "polsca-build", "bin"),
+        os.path.join(root_dir, "scalehls-build", "bin"),
         os.path.join(root_dir, "papi-7-1-0-t-installation", "bin"),
         phism_env["PATH"],
     ]
@@ -253,6 +254,7 @@ def get_phism_env():
         os.path.join(root_dir, "llvm-14-src-build-for-polygeist-polymer-polsca", "lib"),
         os.path.join(root_dir, "polymer-build-for-polsca", "pluto", "lib"),
         os.path.join(root_dir, "polsca-build", "lib"),
+        os.path.join(root_dir, "scalehls-build", "lib"),
         os.path.join(root_dir, "papi-7-1-0-t-installation", "lib"),
 
         phism_env["LD_LIBRARY_PATH"],
@@ -295,6 +297,7 @@ class PbFlow():
         self.polygeist_build_dir = os.path.join(self.root_dir, "polygeist-build-for-polsca")
         self.polymer_build_dir = os.path.join(self.root_dir, "polymer-build-for-polsca")
         self.polsca_build_dir = os.path.join(self.root_dir, "polsca-build")
+        self.scalehls_build_dir = os.path.join(self.root_dir, "scalehls-build")
         self.papi_installation_dir = os.path.join(self.root_dir, "papi-7-1-0-t-installation")
 
 
@@ -391,7 +394,9 @@ class PbFlow():
                 # .array_partition()
                 # .sanity_check(no_diff=True)
                 .scop_stmt_inline()      # if self.options.loop_transforms==True, then this will be deactivated
-                .transform_for_scalehls()   # Will only be used for "self.options.only_kernel_transformation==True"
+                .transform_for_scalehls()   # Will only be used for "self.options.enable_scalehls==True"
+                .scalehls_opt()
+                .scalehls_translate_to_cpp()
                 .mlir_opt_chain_for_cpu()
                 # .lower_llvm()
                 # .sanity_check()
@@ -954,7 +959,7 @@ class PbFlow():
 
         ]
 
-        # If sanity check is enabled
+        # If --verify-benchmark-result or --sanity-check is enabled
         if self.options.sanity_check or self.options.verify_benchmark_result:
             # Turn off the papi
             self.options.enable_papi = False
@@ -978,14 +983,17 @@ class PbFlow():
                 flags += ["-D POLYBENCH_TIME"]
         
 
-        # If user wants only the kernel transformation, then we need to replace/remove all the previously added flags.
-        # Because earlier flags are for executabls
-        if self.options.only_kernel_transformation:
+        
+        # print("I am hit", flags)
+        
+        # If user wants only the kernel transformation (or the scalehls transformation flow), then we need to replace/remove all the previously added flags.
+        # Because earlier flags are for executables
+        if self.options.only_kernel_transformation or self.options.enable_scalehls:
             kernel_name = get_top_func(self.cur_file)
             flags = [f"--function={kernel_name}"]
             return " ".join(flags)
 
-        # print("I am hit", flags)
+        
 
         # Join flags into a single string
         return " ".join(flags)
@@ -998,8 +1006,9 @@ class PbFlow():
             return self
 
 
-        if not self.options.dump_test_data_cpu:
+        if not self.options.dump_test_data_cpu and not self.options.verify_benchmark_result:
             return self
+
 
         # With papi activated, we will only do the performance test
         if self.options.enable_papi is True:
@@ -1048,6 +1057,8 @@ class PbFlow():
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(".c", ".mlir")
 
+        log_file = self.cur_file.replace(".mlir", ".log")
+
         # print(self.prep_polybench_c_macro_compile_flags())
 
         self.run_command(cmd=f'sed -i "s/static//g" {src_file}', shell=True)
@@ -1074,6 +1085,7 @@ class PbFlow():
                     os.path.join(self.work_dir, "utilities"),
                 ]
             ),
+            stderr=open(log_file, "w"),
             stdout=open(self.cur_file, "w"),
             shell=True,
             env=self.env,
@@ -1087,6 +1099,8 @@ class PbFlow():
         # print("I am hit - for deriche")
 
         if self.options.only_kernel_transformation is True:
+            keep_all = False
+        elif self.options.enable_scalehls is True:
             keep_all = False
         else:
             keep_all = True
@@ -1230,20 +1244,21 @@ class PbFlow():
     def transform_for_scalehls(self):
 
         """
-        This function will be only & only used for transformations
+        This is a prerequisite transformation only intended for scalehls.
+
 
         "func @kernel_kernel_name(..)" will be converted to "func.func @kernel_kernel_name(..)"
         But all the other parts will be intact.
         """
 
-        if not self.options.only_kernel_transformation:
+        if not self.options.enable_scalehls:
             return self
         
 
         assert self.cur_file.endswith(".mlir"), "Should be an mlir (i.e. *.mlir) file."
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
-            ".mlir", ".add-func.mlir"
+            ".mlir", ".sclhls-add-func.mlir"
         )
 
         log_file = self.cur_file.replace(".mlir", ".log")
@@ -1277,15 +1292,90 @@ class PbFlow():
         return self
 
 
+    def scalehls_opt(self):
+
+        """
+        Scalehls optimization.
+        """
+
+        if not self.options.enable_scalehls:
+            return self
+        
+
+        assert self.cur_file.endswith(".mlir"), "Should be an mlir (i.e. *.mlir) file."
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".sclhls-opt.mlir"
+        )
+
+        log_file = self.cur_file.replace(".mlir", ".log")
+
+        args = [
+            self.get_program_abspath("scalehls-opt"),
+            src_file,
+            # f'-loop-transforms="max-span={self.options.max_span}"',
+            # f'-scalehls-dse-pipeline="top-func={get_top_func(src_file)} target-spec={samples/polybench/config.json}"',
+            # "-fold-if" if self.options.coalescing else "",
+            "-debug-only=scalehls",
+        ]
+
+        # args = self.filter_disabled(args)
+
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+
+        return self
+
+
+    def scalehls_translate_to_cpp(self):
+
+        """
+        Scalehls mlir to cpp translation.
+        """
+
+        if not self.options.enable_scalehls:
+            return self
+        
+
+        assert self.cur_file.endswith(".mlir"), "Should be an mlir (i.e. *.mlir) file."
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".sclhls-trns.cpp"
+        )
+
+        log_file = self.cur_file.replace(".mlir", ".log")
+
+        args = [
+            self.get_program_abspath("scalehls-translate"),
+            src_file,
+            "-scalehls-emit-hlscpp",
+            "-debug-only=scalehls",
+        ]
+
+        # args = self.filter_disabled(args)
+
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+
+        return self
+
+
+
+
     def mlir_opt_chain_for_cpu(self):
         """mlir-opt CHAIN for CPU."""
         
         if self.options.only_kernel_transformation:
-            return self
-
-
-        # If one of the following options are not set, then continue for the the transformation
-        if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
             return self
         
 
@@ -1326,11 +1416,6 @@ class PbFlow():
             return self
 
 
-        # If one of the following options are not set, then continue for the the transformation
-        if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
-            return self
-        
-
         assert self.cur_file.endswith(".mlir"), "Should be an MLIR file."
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
@@ -1370,11 +1455,6 @@ class PbFlow():
         if self.options.only_kernel_transformation:
             return self
 
-
-        # If one of the following options are not set, then continue for the the transformation
-        if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
-            return self
-        
 
         assert self.cur_file.endswith(".ll"), "Should be an llvm (i.e. *.ll) file."
 
@@ -2179,9 +2259,23 @@ def pb_flow_process(relative_temp_kernel_dir: str, work_dir: str, options: PbFlo
                     )
                 )
 
-    # For performance benchmark and success case
+    # Just compile and do nothing else
     else:
-        pass
+        if not options.dry_run:
+            if is_kernel_transformation_error(temp_kernel_abs_dir):   
+                # print("I am hit", is_kernel_transformation_error(temp_kernel_abs_dir))
+                print(
+                    '>>> Transformation Error occured {:15s}  Status: {}  Error: "{}"'.format(
+                        os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
+                    )
+                )
+            else:
+                print(
+                    '>>> Finished {:15s} elapsed: {:.6f} secs   Status: {}  Error: "{}"'.format(
+                        os.path.basename(temp_kernel_abs_dir), float(0.00), flow.status, flow.errmsg
+                    )
+                )
+        
 
 
 def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
@@ -2230,6 +2324,22 @@ def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
             for each_kernel_dir in final_kernel_relative_dir_list
         ]
     
+    # Only compilation flow
+    elif not options.run_bin_on_cpu and not options.verify_benchmark_result and not options.only_kernel_transformation:
+        # Create records for each directory
+        records = [
+            Record(
+                os.path.basename(each_kernel_dir),  # kernel name
+                "only-compilation",
+                "yes" if options.polymer else "no",
+                0.00,   # Default 0.00
+                "N/A",
+                "N/A",
+                "Compilation Success" if not is_kernel_transformation_error(each_kernel_dir) else "Compilation Error"
+            )
+            for each_kernel_dir in final_kernel_relative_dir_list
+        ]
+
     elif options.only_kernel_transformation:
         # Create records for each directory
         records = [

@@ -39,6 +39,7 @@ class PhismRunnerOptions:
     # Umbria add
     source_file: str = ""  # input source file (--source-dir)
     only_kernel_transformation: bool = False # If True, then there will be no "main()" in MLIR. Check also "extract_top_func_for_cpu()"
+    enable_scalehls: bool = False # If True, then activate scalehls transformation chain
     clang_no_opt_bin: bool = False  # Default enable clang NO loop unrolling (--disable-loop-unrolling)
     run_bin_on_cpu: bool = False  # Default False
     dump_test_data_cpu: bool = False  # Default False
