@@ -104,12 +104,12 @@ def main():
         "--enable-scalehls",
         action="store_true",
         help="Scalehls transform activation"
-    ) 
+    )
 
     parser.add_argument(
-        "--clang-no-opt-bin",
+        "--clang-opt-bin",
         action="store_true",
-        help="No optimization (i.e. -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize).",
+        help="optimization (if not enabled, following flags will be added -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize).",
     )
 
     parser.add_argument(

@@ -960,12 +960,12 @@ class PbFlow():
         ]
 
         # If --verify-benchmark-result or --sanity-check is enabled
-        if self.options.sanity_check or self.options.verify_benchmark_result:
+        if self.options.sanity_check or self.options.verify_benchmark_result or self.options.dump_test_data_cpu:
             # Turn off the papi
             self.options.enable_papi = False
 
             # Use MINI dataset by default, or SMALL if explicitly specified
-            dataset = self.options.dataset if self.options.dataset in ("MINI", "SMALL", "MEDIUM", "LARGE") else "MINI"
+            dataset = self.options.dataset if self.options.dataset in ("MINI", "SMALL", "MEDIUM", "LARGE", "EXTRALARGE") else "MINI"
             flags += [f"-D {dataset}_DATASET", "-D POLYBENCH_DUMP_ARRAYS"]
         else:
             flags += [f"-D {self.options.dataset}_DATASET"]
@@ -994,6 +994,22 @@ class PbFlow():
             return " ".join(flags)
 
         
+
+        # Join flags into a single string
+        return " ".join(flags)
+
+
+    def prep_clang_opt_flags_for_cpu(self):
+        
+        # Base flags
+        flags = [
+
+        ]
+
+        if self.options.clang_opt_bin:
+            flags += ["-O3"]
+        else:
+            flags += ["-O0", "-fno-unroll-loops", "-fno-vectorize", "-fno-slp-vectorize", "-fno-tree-vectorize"]
 
         # Join flags into a single string
         return " ".join(flags)
@@ -1033,6 +1049,11 @@ class PbFlow():
                         "14.0.0",
                         "include",
                     ),
+                    self.prep_clang_opt_flags_for_cpu(),
+                    # (
+                    #     "-O3" if self.options.clang_opt_bin else 
+                    #     "-O0 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize"  # add optimization flags
+                    # ),
                     "-lm",
                     self.cur_file,
                     os.path.join(self.work_dir, "utilities", "polybench.c"),
@@ -1167,7 +1188,7 @@ class PbFlow():
         log_file = self.cur_file.replace(".mlir", ".log")
 
         passes = [
-            # f"-annotate-scop='functions={get_top_func(src_file)}'",
+            f"-annotate-scop='functions={get_top_func(src_file)}'",
             "-fold-scf-if",
         ]
         if self.options.split == "NO_SPLIT":  # The split stmt has applied -reg2mem
@@ -1430,12 +1451,10 @@ class PbFlow():
             "|",
             self.get_program_abspath("opt"),
             "-S",
-            "-O3",
             (
-                "--disable-loop-unrolling"
-                if self.options.clang_no_opt_bin is True
-                else ""
-            )
+                "-O3" if self.options.clang_opt_bin else 
+                "-O0 --disable-loop-unrolling"  # add optimization flags
+            ),
 
         ]
 
@@ -1461,10 +1480,9 @@ class PbFlow():
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
             ".ll",
             (
+                ".clang-opt.exe" if self.options.clang_opt_bin else 
                 ".no-clang-opt.exe"
-                if self.options.clang_no_opt_bin is True
-                else ".clang-opt.exe"
-            )
+            ),
         )
 
         log_file = self.cur_file.replace(".ll", ".log")
@@ -1473,7 +1491,6 @@ class PbFlow():
             cmd=" ".join(
                 [
                     self.get_program_abspath("clang"),
-                    "-O3",
                     src_file,
                     os.path.join(
                         self.work_dir, "utilities", "polybench.c"
@@ -1490,11 +1507,11 @@ class PbFlow():
                     ),
                     "-I",
                     os.path.join(self.work_dir, "utilities"),
-                    (
-                        "-fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize"
-                        if self.options.clang_no_opt_bin is True
-                        else ""
-                    ),
+                    self.prep_clang_opt_flags_for_cpu(),
+                    # (
+                    #     "-O3" if self.options.clang_opt_bin else 
+                    #     "-O0 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize"  # add optimization flags
+                    # ),
                     "-lm",
                     "-lc",
                     "-o",
@@ -2301,7 +2318,8 @@ def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
                 # "dummy-operation-name",
                 # here is "operation_name" field
                 (
-                    "cpu-execution" if options.run_bin_on_cpu else 
+                    "cpu-exe-opt" if options.run_bin_on_cpu and options.clang_opt_bin else
+                    "cpu-exe-no-opt" if options.run_bin_on_cpu and not options.clang_opt_bin else
                     "verification" if options.verify_benchmark_result else 
                     "unknown"  # Optional fallback if none of the options are True
                 ),
@@ -2346,7 +2364,8 @@ def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
             Record(
                 os.path.basename(each_kernel_dir),  # kernel name
                 ( 
-                    "transformation" if options.only_kernel_transformation else 
+                    "mlir-transform" if options.only_kernel_transformation and not options.enable_scalehls else
+                    "scalehls-transform" if options.only_kernel_transformation and options.enable_scalehls else
                     "unknown"  # Optional fallback if none of the options are True
                 ),
                 "yes" if options.polymer else "no",
