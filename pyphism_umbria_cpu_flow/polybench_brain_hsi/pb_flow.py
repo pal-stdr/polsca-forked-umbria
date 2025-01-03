@@ -381,11 +381,11 @@ class PbFlow():
                 # .split_statements()   # It doesn't work
                 # .extract_top_func() # It is doing scop_decomp inside
                 .extract_top_func_for_cpu() # if self.options.only_kernel_transformation==True, it is going to remove main() from MLIR code
-                .scop_decomposition_for_cpu() # if self.options.loop_transforms==True, it will be activated
+                # .scop_decomposition_for_cpu() # if self.options.loop_transforms==True, it will be activated. DONOT ACTIVATE IT IF YOU WANT TO MAKE THIS FLOW WORK. BECAUSE, IT DECOMPOSES THE SCOP INTO MULTIPLE CHUNKS OF FUNC, WHICH MAKE POLYMER GO HEYWIRE FOR LOT OF POLYBENCH KERNELS. A GOOD THING TO RESEARCH, WHY THIS HAPPENS.
                 .sanity_check()
                 # .polymer_opt()
                 .polymer_opt_for_cpu()
-                # .sanity_check()     # From here to onwards, sanity_check will fail because of polymer-opt. The dumped array numbers get multi-lined print
+                # .sanity_check()     # From here to onwards, sanity_check will fail because of polymer-opt.
                 .constant_args()    # transforms the mlir #map for affine dimension
                 # .sanity_check()
                 # .loop_transforms()
@@ -397,6 +397,7 @@ class PbFlow():
                 .transform_for_scalehls()   # Will only be used for "self.options.enable_scalehls==True"
                 .scalehls_opt()
                 .scalehls_translate_to_cpp()
+                .rename_scalehls_cpp_kernel()
                 .mlir_opt_chain_for_cpu()
                 # .lower_llvm()
                 # .sanity_check()
@@ -701,7 +702,7 @@ class PbFlow():
             self.get_program_abspath("phism-opt"),
             src_file,
             f'-extract-top-func="name={get_top_func(src_file)} keepall={self.options.sanity_check}"',
-            "-scop-decomp" if self.options.loop_transforms else "",
+            # "-scop-decomp" if self.options.loop_transforms else "",
             "-debug",
         ]
         self.run_command(
@@ -1149,7 +1150,10 @@ class PbFlow():
 
 
     def scop_decomposition_for_cpu(self):
-        """Extract the top function and all the stuff it calls. 'keep_main_func_in_mlir' option is very important. Because if it is false, then main() is going to be removed from the MLIR code, and you cannot test with CPU flow."""
+        """Decompose the scop..
+        
+        DONOT ACTIVATE IT IF YOU WANT TO MAKE THIS FLOW WORK. BECAUSE, IT DECOMPOSES THE SCOP INTO MULTIPLE CHUNKS OF FUNC, WHICH MAKE POLYMER GO HEYWIRE FOR LOT OF POLYBENCH KERNELS. A GOOD THING TO RESEARCH, WHY THIS HAPPENS.
+        """
 
         if self.options.loop_transforms is not True:
             return self
@@ -1225,14 +1229,17 @@ class PbFlow():
 
     def loop_transforms_for_cpu(self):
         """Run Phism loop transforms."""
+
         if not self.options.loop_transforms:
             return self
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
             ".mlir", ".lt.mlir"
         )
+        
         log_file = self.cur_file.replace(".mlir", ".log")
 
+        
         args = [
             self.get_program_abspath("phism-opt"),
             src_file,
@@ -1245,11 +1252,12 @@ class PbFlow():
             "-scop-stmt-inline",
             # "-fold-if" if self.options.coalescing else "",
             # "-demote-bound-to-if" if self.options.coalescing else "",
-            # "-fold-if",
+            # "-fold-if",   # doesn't work with this flow
             "-debug-only=loop-transforms",
         ]
 
-        args = self.filter_disabled(args)
+        # Donot activate it. Root of all evil :(
+        # args = self.filter_disabled(args)
 
         self.run_command(
             cmd=" ".join(args),
@@ -1390,13 +1398,52 @@ class PbFlow():
 
         return self
 
+    
+    def rename_scalehls_cpp_kernel(self):
 
+        """
+        Rename scalehls cpp kernel.
+        Note: filename & kernel should be exactly same.
+        E.g. filename: "kernel_hls_2mm.cpp", KernelName: "kernel_hls_2mm()"
+        """
+
+        if not self.options.enable_scalehls:
+            return self
+        
+
+        assert self.cur_file.endswith(".cpp"), "Should be an mlir (i.e. *.cpp) file."
+
+
+        src_file = self.cur_file
+        
+        # Make the dir a new HLS kernel file.
+        # Rename "**/covariance/*.sclhls-trns.cpp" to "**/covariance/kernel_{kernel-name}.cpp"
+        kernel_file = os.path.join(
+            os.path.dirname(self.cur_file), (get_top_func(self.cur_file) + ".cpp")
+        )
+        
+        # Create the kernel file
+        open(kernel_file, "a").close()
+
+        self.run_command(
+            shell=True,
+            text=True,   # Treat input/output as text
+            cmd_list=[f"tee {kernel_file} < {src_file}"],  # Redirects the content of src_file to tee.
+            stdout=subprocess.PIPE,     # Optional: Capture `tee` output (not needed here)
+            stderr=subprocess.PIPE,     # Optional: Capture errors
+            env=self.env
+        )
+
+        return self        
 
 
     def mlir_opt_chain_for_cpu(self):
         """mlir-opt CHAIN for CPU."""
         
         if self.options.only_kernel_transformation:
+            return self
+        
+        if self.options.enable_scalehls:
             return self
         
 
@@ -1436,6 +1483,9 @@ class PbFlow():
         if self.options.only_kernel_transformation:
             return self
 
+        if self.options.enable_scalehls:
+            return self
+        
 
         assert self.cur_file.endswith(".mlir"), "Should be an MLIR file."
 
@@ -1474,6 +1524,9 @@ class PbFlow():
         if self.options.only_kernel_transformation:
             return self
 
+        if self.options.enable_scalehls:
+            return self
+        
 
         assert self.cur_file.endswith(".ll"), "Should be an llvm (i.e. *.ll) file."
 
@@ -1538,6 +1591,9 @@ class PbFlow():
         if self.options.only_kernel_transformation:
             return self
 
+        if self.options.enable_scalehls:
+            return self
+        
 
         # If one of the following options are not set, then continue for the the transformation
         if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
@@ -1598,6 +1654,10 @@ class PbFlow():
 
         if self.options.only_kernel_transformation:
             return self
+        
+        if self.options.enable_scalehls:
+            return self
+        
         
         # If there is an kernel execution error, there is no point in result checking
         if self.is_kernel_execution_error_found:
@@ -1827,6 +1887,9 @@ class PbFlow():
         if self.options.only_kernel_transformation:
             return self
 
+        if self.options.enable_scalehls:
+            return self
+        
 
         # If one of the following options are not set, then continue for the the transformation
         if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
