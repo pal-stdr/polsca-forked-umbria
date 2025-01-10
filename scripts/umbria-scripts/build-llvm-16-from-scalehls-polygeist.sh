@@ -55,37 +55,34 @@ export PATH="${LLVM_16_BUILD_BIN_DIR}${PATH:+:${PATH}}"
 SCALEHLS_POLYGEIST_LLVM_DIR="${POLSCA_ROOT_DIR}/scalehls-umbria-forked/polygeist/llvm-project"
 
 
-# Go to the llvm directory and carry out installation.
-POLYGEIST_LLVM_BUILD_DIR="${POLSCA_ROOT_DIR}/llvm-14-src-build-for-polygeist-polymer-polsca"
-
-
 # Set your build folder name
 BUILD_FOLDER_NAME="llvm-16-src-build-for-scalehls"
 INSTALLATION_FOLDER_NAME="${BUILD_FOLDER_NAME}-installation"
 
 
 BUILD_FOLDER_DIR="${POLSCA_ROOT_DIR}/${BUILD_FOLDER_NAME}"
-# INSTALLATION_FOLDER_DIR="${POLSCA_ROOT_DIR}/${INSTALLATION_FOLDER_NAME}"
+INSTALLATION_FOLDER_DIR="${POLSCA_ROOT_DIR}/${INSTALLATION_FOLDER_NAME}"
 
 
-# rm -Rf "${BUILD_FOLDER_DIR}" "${INSTALLATION_FOLDER_DIR}"
-rm -Rf "${BUILD_FOLDER_DIR}"
+rm -Rf "${BUILD_FOLDER_DIR}" "${INSTALLATION_FOLDER_DIR}"
+# rm -Rf "${BUILD_FOLDER_DIR}"
 
 # Create the build folders in $POLSCA_ROOT_DIR
-# mkdir -p "${BUILD_FOLDER_DIR}" "${INSTALLATION_FOLDER_DIR}"
-mkdir -p "${BUILD_FOLDER_DIR}"
+mkdir -p "${BUILD_FOLDER_DIR}" "${INSTALLATION_FOLDER_DIR}"
+# mkdir -p "${BUILD_FOLDER_DIR}"
 
 
 cd "${BUILD_FOLDER_DIR}"/
 
 
 
-# Works
+# Works (With installation dir)
 cmake   \
     -G Ninja    \
     -S "${SCALEHLS_POLYGEIST_LLVM_DIR}/llvm"  \
     -B .    \
     -DCMAKE_BUILD_TYPE=DEBUG      \
+    -DCMAKE_INSTALL_PREFIX="${INSTALLATION_FOLDER_DIR}"  \
     -DLLVM_ENABLE_PROJECTS="mlir;clang;lld" \
     -DLLVM_TARGETS_TO_BUILD="host" \
     -DLLVM_ENABLE_ASSERTIONS=ON \
@@ -98,25 +95,8 @@ cmake   \
 
 
 
-# # Works (With installation dir)
-# cmake   \
-#     -G Ninja    \
-#     -S "${SCALEHLS_POLYGEIST_LLVM_DIR}/llvm"  \
-#     -B .    \
-#     -DCMAKE_BUILD_TYPE=DEBUG      \
-#     -DCMAKE_INSTALL_PREFIX="${INSTALLATION_FOLDER_DIR}"  \
-#     -DLLVM_ENABLE_PROJECTS="mlir;clang;lld" \
-#     -DLLVM_TARGETS_TO_BUILD="host" \
-#     -DLLVM_ENABLE_ASSERTIONS=ON \
-#     -DMLIR_ENABLE_BINDINGS_PYTHON="${PYBIND:=OFF}" \
-#     -DSCALEHLS_ENABLE_BINDINGS_PYTHON="${PYBIND:=OFF}" \
-#     -DLLVM_PARALLEL_LINK_JOBS=2 \
-#     -DCMAKE_C_COMPILER=clang \
-#     -DCMAKE_CXX_COMPILER=clang++    \
-#     -DLLVM_USE_LINKER=lld
-
-
-
 # Run build
 cmake --build .
-ninja install
+
+# If you want to "install" to "${INSTALLATION_FOLDER_DIR}" dir (means, collecting the "include", "lib", and "bin" dirs to "${INSTALLATION_FOLDER_DIR}"), activate "ninja install".
+# ninja install

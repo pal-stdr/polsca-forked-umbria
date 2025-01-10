@@ -21,7 +21,7 @@ from timeit import default_timer as timer
 from typing import Any, Dict, List, Optional
 
 import re
-
+import inspect  # for detecting function name from within of a function
 
 import pandas as pd
 
@@ -81,14 +81,27 @@ ERROR_DICTIONARY = {
 
 
 
+# RECORD_FIELDS = (
+#     "name",
+#     "type",
+#     "polymer",
+#     "time",
+#     "execution_err",
+#     "verification_err",
+#     "run_status",
+# )
+
 RECORD_FIELDS = (
-    "name",
-    "type",
-    "polymer",
-    "time",
-    "execution_err",
-    "verification_err",
-    "run_status",
+    "kernel",
+    "type",         # (i.e. "mlir-transform", "scalehls-transform", "polly-transform", "only-compilation", "verification", "execution", "unknown")
+    "flow",         # (i.e. "polygeist", "polly-llvm", "polyg-scalehls", "not-found")
+    "device",       # (i.e. "{cpu-model}" or "fpga")
+    "polyhedral",   # (i.e. "polymer", "polly-isl", "no", "not-found")
+    "optimization", # (i.e. "clang-opt", "polly-omp-opt", "no-opt")
+    "time",         # 
+    "exec_err",
+    "veri_err",     # verification err (values "N/A" or "yes" or "no")
+    "run_status"
 )
 
 
@@ -375,38 +388,41 @@ class PbFlow():
                 # .dump_test_data()
                 .dump_test_data_for_cpu()
                 # .compile_c()
-                .compile_c_for_cpu()   # If sanity_check==True, "-D POLYBENCH_TIME" deactivated
-                .preprocess()
-                .sanity_check()
+                .compile_c_polly_for_cpu()
+                .polly_polyhedral_llvm_transformation_for_cpu()
+                .compile_c_polygeist_for_cpu()   # If sanity_check==True, "-D POLYBENCH_TIME" deactivated
+                .polygeist_preprocess_for_cpu()
+                .polygeist_sanity_check()
                 # .split_statements()   # It doesn't work
                 # .extract_top_func() # It is doing scop_decomp inside
                 .extract_top_func_for_cpu() # if self.options.only_kernel_transformation==True, it is going to remove main() from MLIR code
-                # .scop_decomposition_for_cpu() # if self.options.loop_transforms==True, it will be activated. DONOT ACTIVATE IT IF YOU WANT TO MAKE THIS FLOW WORK. BECAUSE, IT DECOMPOSES THE SCOP INTO MULTIPLE CHUNKS OF FUNC, WHICH MAKE POLYMER GO HEYWIRE FOR LOT OF POLYBENCH KERNELS. A GOOD THING TO RESEARCH, WHY THIS HAPPENS.
-                .sanity_check()
+                .scop_decomposition_for_cpu() # if self.options.loop_transforms==True, it will be activated. DONOT ACTIVATE IT IF YOU WANT TO MAKE THIS FLOW WORK. BECAUSE, IT DECOMPOSES THE SCOP INTO MULTIPLE CHUNKS OF FUNC, WHICH MAKE POLYMER GO HEYWIRE FOR LOT OF POLYBENCH KERNELS. A GOOD THING TO RESEARCH, WHY THIS HAPPENS.
+                .polygeist_sanity_check()
                 # .polymer_opt()
                 .polymer_opt_for_cpu()
-                # .sanity_check()     # From here to onwards, sanity_check will fail because of polymer-opt.
-                .constant_args()    # transforms the mlir #map for affine dimension
-                # .sanity_check()
+                # .polygeist_sanity_check()     # From here to onwards, polygeist_sanity_check will fail because of polymer-opt.
+                .constant_args_for_cpu()    # transforms the mlir #map for affine dimension
+                # .polygeist_sanity_check()
                 # .loop_transforms()
                 .loop_transforms_for_cpu()
-                # .sanity_check()
+                # .polygeist_sanity_check()
                 # .array_partition()
-                # .sanity_check(no_diff=True)
-                .scop_stmt_inline()      # if self.options.loop_transforms==True, then this will be deactivated
+                # .polygeist_sanity_check(no_diff=True)
+                .scop_stmt_inline_for_cpu()      # if self.options.loop_transforms==True, then this will be deactivated
                 .transform_for_scalehls()   # Will only be used for "self.options.enable_scalehls==True"
                 .scalehls_opt()
                 .scalehls_translate_to_cpp()
                 .rename_scalehls_cpp_kernel()
                 .mlir_opt_chain_for_cpu()
                 # .lower_llvm()
-                # .sanity_check()
+                # .polygeist_sanity_check()
                 .translate_mlir_to_llvmir_for_cpu()
+                .clang_or_polly_omp_opt_for_cpu()
                 .compile_bin_for_cpu()
                 .run_bin_on_cpu()
                 .verify_benchmark_result()
                 .dump_kernel_profile_logs_to_file()
-                # .sanity_check(no_diff=True)
+                # .polygeist_sanity_check(no_diff=True)
             )
         except Exception as e:
             self.status = 1
@@ -948,7 +964,7 @@ class PbFlow():
 
 
 
-    def prep_polybench_c_macro_compile_flags(self):
+    def prep_c_macro_compile_flags(self):
 
         # if self.options.sanity_check is not True:
         #     return f"-D {self.options.dataset}_DATASET -D POLYBENCH_TIME -D POLYBENCH_PAPI -I {os.path.join(self.papi_installation_dir, 'include')} -L {os.path.join(self.papi_installation_dir, 'lib')} -lpapi"
@@ -967,7 +983,9 @@ class PbFlow():
 
             # Use MINI dataset by default, or SMALL if explicitly specified
             dataset = self.options.dataset if self.options.dataset in ("MINI", "SMALL", "MEDIUM", "LARGE", "EXTRALARGE") else "MINI"
-            flags += [f"-D {dataset}_DATASET", "-D POLYBENCH_DUMP_ARRAYS"]
+
+            # "-D POLYBENCH_TIME" will be always used, doesn't matter it is verification or performance run
+            flags += [f"-D {dataset}_DATASET", "-D POLYBENCH_DUMP_ARRAYS", "-D POLYBENCH_TIME"]
         else:
             flags += [f"-D {self.options.dataset}_DATASET"]
         
@@ -976,20 +994,19 @@ class PbFlow():
             flags += ["-D POLYBENCH_PAPI", "-D POLYBENCH_TIME", f"-I {os.path.join(self.papi_installation_dir, 'include')}", f"-L {os.path.join(self.papi_installation_dir, 'lib')}", "-lpapi"]
 
 
-        # (sanity_check or verify_results or enable_papi) if any one of them is eanabled, donot add "-D POLYBENCH_TIME"
-        if self.options.sanity_check or self.options.verify_benchmark_result or self.options.enable_papi:
-            pass
-        else:
-            if "-D POLYBENCH_TIME" not in flags:
-                flags += ["-D POLYBENCH_TIME"]
+        # # (sanity_check or verify_results or enable_papi) if any one of them is eanabled, donot add "-D POLYBENCH_TIME"
+        # if self.options.sanity_check or self.options.verify_benchmark_result or self.options.enable_papi:
+        #     pass
+        # else:
+        #     if "-D POLYBENCH_TIME" not in flags:
+        #         flags += ["-D POLYBENCH_TIME"]
         
 
-        
         # print("I am hit", flags)
         
         # If user wants only the kernel transformation (or the scalehls transformation flow), then we need to replace/remove all the previously added flags.
         # Because earlier flags are for executables
-        if self.options.only_kernel_transformation or self.options.enable_scalehls:
+        if (self.options.only_kernel_transformation or self.options.enable_scalehls) and self.options.enable_polygeist:
             kernel_name = get_top_func(self.cur_file)
             flags = [f"--function={kernel_name}"]
             return " ".join(flags)
@@ -998,19 +1015,41 @@ class PbFlow():
 
         # Join flags into a single string
         return " ".join(flags)
+    
 
+    def prep_clang_or_polly_omp_opt_flags_for_cpu(self):
 
-    def prep_clang_opt_flags_for_cpu(self):
+        """
+        You can activate either "clang_opt", nor "polly_omp_opt", nor no optimization (turn off all optimization) at all. But you can't activate both.
+        """
         
         # Base flags
         flags = [
 
         ]
 
-        if self.options.clang_opt_bin:
-            flags += ["-O3"]
+        if self.options.clang_opt:
+            flags += ["-O3", "-funroll-loops", "-fvectorize", "-fslp-vectorize"]
+            
+        # If OpenMP is enabled
+        elif self.options.polly_omp_opt:
+            flags += [
+                f'-I {os.path.join(self.llvm_build_dir, "projects", "openmp", "runtime", "src")}',  # header path search for "#include <omp.h>" in "polybench.c"
+                f'-include {os.path.join(self.llvm_build_dir, "projects", "openmp", "runtime", "src", "omp.h")}',   # For llvm reference
+                "-fopenmp", # resolves openmp related linker error for polybench
+                # Top 3 flags resolve the compile issue for only polybench's linear-algebra/blas/{symm, syr2k, syrk, trmm} kernels. But rest of the kernels work without them
+                "-O3",
+                "-mllvm -polly -mllvm -polly-parallel -lgomp",   # Automatically detect parallel loops and generate OpenMP code. https://releases.llvm.org/14.0.0/tools/polly/docs/UsingPollyWithClang.html#automatic-openmp-code-generation
+                "-mllvm -polly-omp-backend=LLVM",
+                f'-mllvm -polly-num-threads={int(os.cpu_count())}',
+                "-mllvm -polly-scheduling=dynamic -mllvm -polly-scheduling-chunksize=1", # Use alternative backend with dynamic scheduling
+                "-mllvm -polly-vectorizer=stripmine",   # Enabled automatic vector code gen
+            ]
+        # Turn off all optimization
         else:
             flags += ["-O0", "-fno-unroll-loops", "-fno-vectorize", "-fno-slp-vectorize", "-fno-tree-vectorize"]
+        
+        # print(flags)
 
         # Join flags into a single string
         return " ".join(flags)
@@ -1039,7 +1078,7 @@ class PbFlow():
                 [
                     self.get_program_abspath("clang"),
                     # if self.options.sanity_check==True: then return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS", else "-D {self.options.dataset}_DATASET -D POLYBENCH_TIME"
-                    self.prep_polybench_c_macro_compile_flags(),
+                    self.prep_c_macro_compile_flags(),
                     "-I",
                     os.path.join(self.work_dir, "utilities"),
                     "-I",
@@ -1050,9 +1089,9 @@ class PbFlow():
                         "14.0.0",
                         "include",
                     ),
-                    self.prep_clang_opt_flags_for_cpu(),
+                    self.prep_clang_or_polly_omp_opt_flags_for_cpu(),
                     # (
-                    #     "-O3" if self.options.clang_opt_bin else 
+                    #     "-O3" if self.options.clang_opt else 
                     #     "-O0 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize"  # add optimization flags
                     # ),
                     "-lm",
@@ -1074,14 +1113,199 @@ class PbFlow():
         return self
 
 
-    def compile_c_for_cpu(self):
+    def compile_c_polly_for_cpu(self):
+        """
+        Compile C file for polly flow
+        
+        Compile "*.c" to ".ll"
+        Then compile "*.ll" to ".ll" using "opt -polly-canonicalize"
+        """
+
+        if self.options.enable_scalehls:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-scalehls" only deals with MLIR-->CPP translation.'
+            )
+            return self
+
+
+        if self.options.enable_polygeist:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" c-->llvm emitter function, since "--enable-polygeist" flag is active.'
+            )
+            return self
+
+
+
+        if not self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" c-->llvm emitter function, since "--enable-polly" flag is not active.'
+            )
+            return self
+
+
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(".c", ".pre.ll")
+
+        log_file = self.cur_file.replace(".ll", ".log")        
+
+        self.run_command(
+            cmd=" ".join(
+                [
+                    self.get_program_abspath("clang"),
+                    # Always disable the default optimization
+                    "-O0",
+                    # By default, when compiling with -O0, Clang adds an "optnone" attribute to all functions in the IR.
+                    # This attribute tells LLVM's optimization passes to skip these functions entirely.
+                    # The "-disable-O0-optnone" flag prevents Clang from adding this attribute, allowing passes like -polly-canonicalize to run on the IR.
+                    "-Xclang -disable-O0-optnone",
+                    src_file,
+                    # if self.options.sanity_check==True: then return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS", else "-D {self.options.dataset}_DATASET -D POLYBENCH_TIME"
+                    self.prep_c_macro_compile_flags(),
+                    "-I",
+                    os.path.join(self.work_dir, "utilities"),
+                    "-I",
+                    os.path.join(
+                        self.llvm_build_dir,
+                        "lib",
+                        "clang",
+                        "14.0.0",
+                        "include",
+                    ),
+                    "-emit-llvm",
+                    "-S",
+                    "-o",
+                    self.cur_file
+
+                ]
+            ),
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            shell=True,
+            env=self.env,
+        )
+
+        return self
+
+
+    def polly_polyhedral_llvm_transformation_for_cpu(self):
+        """
+        Polyhedral transformation using CPU
+        https://releases.llvm.org/14.0.0/tools/polly/docs/UsingPollyWithClang.html#automatic-openmp-code-generation
+        https://releases.llvm.org/14.0.0/tools/polly/docs/HowToManuallyUseTheIndividualPiecesOfPolly.html
+        """
+
+        if self.options.enable_scalehls:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-scalehls" only deals with MLIR-->CPP translation.'
+            )
+            return self
+
+
+        if self.options.enable_polygeist:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" c-->llvm emitter function, since "--enable-polygeist" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" c-->llvm emitter function, since "--enable-polly" flag is not active.'
+            )
+            return self
+
+
+        if not self.options.enable_polly_polyhedral:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" llvm-->isl-->llvm scheduler, since "--enable-polly-polyhedral" flag is not active.'
+            )
+            return self
+
+        
+        assert self.cur_file.endswith(".ll"), "Should be an llvm (i.e. *.ll) file."
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(".ll", ".polly-isl.ll")
+
+        log_file = self.cur_file.replace(".ll", ".log")        
+
+        self.run_command(
+            cmd=" ".join(
+                [
+                    # Canonicalize for polly
+                    self.get_program_abspath("opt"),
+                    src_file,
+                    "-polly-canonicalize",
+                    "-S",
+                    "-o",
+                    "-",
+                    "|",
+
+                    # # Detect Scop (For analysiz only)
+                    # self.get_program_abspath("opt"),
+                    # "-basic-aa",
+                    # "-polly-ast",
+                    # "-analyze",
+                    # "-view-scops",
+                    # src_file,
+                    # f'-polly-only-func={get_top_func(src_file)}',
+                    # "-polly-process-unprofitable",
+                    # "-polly-use-llvm-names",
+                    # "-S",
+                    # "-o",
+                    # self.cur_file,
+                    # "-",
+                    # "|",
+
+
+                    # Process scop
+                    self.get_program_abspath("opt"),
+                    "-O3",
+                    "-S",
+                    # f'-polly-only-func={get_top_func(src_file)}',
+                    "-polly-simplify",
+                    "-polly-optree",
+                    "-polly-delicm",
+                    "-polly-simplify",
+                    "-polly-prune-unprofitable",
+                    "-polly-opt-isl",
+                    "-polly-codegen",
+                    src_file,
+                    "-o",
+                    self.cur_file,
+                ]
+            ),
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            shell=True,
+            env=self.env,
+        )
+
+        return self
+
+
+    def compile_c_polygeist_for_cpu(self):
         """Compile C code to MLIR using mlir-clang. If the --sanity-check is true, then it will not be called. Because '-D POLYBENCH_TIME' will be activated for production compile to measure time. '-D POLYBENCH_TIME' make the sanity check to fail."""
+
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(".c", ".mlir")
 
         log_file = self.cur_file.replace(".mlir", ".log")
 
-        # print(self.prep_polybench_c_macro_compile_flags())
+        # print(self.prep_c_macro_compile_flags())
 
         self.run_command(cmd=f'sed -i "s/static//g" {src_file}', shell=True)
         self.run_command(
@@ -1094,7 +1318,7 @@ class PbFlow():
                     "-S",
                     "-O0",
                     # prepare flags (e.g. "-D {}_DATASET", "-D POLYBENCH_DUMP_ARRAYS", "-D POLYBENCH_PAPI", "-D POLYBENCH_TIME") based on condition "sanity_check", "verify_benchmark_result", "enable_papi"
-                    self.prep_polybench_c_macro_compile_flags(),
+                    self.prep_c_macro_compile_flags(),
                     "-I",
                     os.path.join(
                         self.llvm_build_dir,
@@ -1115,10 +1339,125 @@ class PbFlow():
         return self
 
 
+    def polygeist_preprocess_for_cpu(self):
+
+        """Do some preprocessing before extracting the top function."""
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".pre.mlir"
+        )
+        
+        self.run_command(
+            cmd_list=[
+                self.get_program_abspath("mlir-opt"),
+                "-sccp" if not self.options.sanity_check else "",
+                "-canonicalize",
+                src_file,
+            ],
+            stderr=open(
+                os.path.join(
+                    os.path.dirname(self.cur_file),
+                    self.cur_file.replace(".mlir", ".log"),
+                ),
+                "w",
+            ),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+        return self
+
+
+    def polygeist_sanity_check(self, no_diff=False):
+        """Sanity check the current file."""
+
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
+        if not self.options.sanity_check:
+            return self
+
+        assert self.cur_file.endswith(".mlir"), "Should be an MLIR file."
+
+        out_file = self.cur_file.replace(".mlir", ".out")
+        self.run_command(
+            cmd=" ".join(
+                [
+                    self.get_program_abspath("mlir-opt"),
+                    "-convert-math-to-llvm",
+                    "-lower-affine",
+                    "-convert-scf-to-std",
+                    "-convert-memref-to-llvm",
+                    "-convert-std-to-llvm",
+                    "-convert-arith-to-llvm",
+                    "-reconcile-unrealized-casts",
+                    self.cur_file,
+                    "|",
+                    self.get_program_abspath("mlir-translate"),
+                    "-mlir-to-llvmir",
+                    "|",
+                    self.get_program_abspath("opt"),
+                    "-O3",
+                    "|",
+                    self.get_program_abspath("lli"),
+                ]
+            ),
+            shell=True,
+            env=self.env,
+            stderr=open(out_file, "w"),
+        )
+
+        if not no_diff:
+            self.run_command(
+                cmd_list=["diff", self.get_golden_out_file(), out_file],
+                stdout=open(out_file.replace(".out", ".diff"), "w"),
+            )
+
+        return self
+
+
     def extract_top_func_for_cpu(self):
         """Extract the top function and all the stuff it calls. 'only_kernel_transformation' option is very important. Because if it is true, then "main()" is going to be removed from the MLIR code, and you cannot test with CPU flow."""
 
-        # print("I am hit - for deriche")
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
 
         if self.options.only_kernel_transformation is True:
             keep_all = False
@@ -1155,7 +1494,24 @@ class PbFlow():
         DONOT ACTIVATE IT IF YOU WANT TO MAKE THIS FLOW WORK. BECAUSE, IT DECOMPOSES THE SCOP INTO MULTIPLE CHUNKS OF FUNC, WHICH MAKE POLYMER GO HEYWIRE FOR LOT OF POLYBENCH KERNELS. A GOOD THING TO RESEARCH, WHY THIS HAPPENS.
         """
 
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
         if self.options.loop_transforms is not True:
+            self.logger.debug(
+                f'To make "{inspect.currentframe().f_code.co_name}()" work, activate "--loop-transforms" flag.'
+            )
             return self
 
 
@@ -1182,8 +1538,24 @@ class PbFlow():
 
     def polymer_opt_for_cpu(self):
         """Run polymer optimization."""
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
         if not self.options.polymer:
             return self
+
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
             ".mlir", ".plmr.mlir"
@@ -1227,11 +1599,75 @@ class PbFlow():
         return self
 
 
+    def constant_args_for_cpu(self):
+        """Run Phism constant args."""
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
+        if not self.options.constant_args:
+            return self
+
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".ca.mlir"
+        )
+        log_file = self.cur_file.replace(".mlir", ".log")
+
+        args = [
+            self.get_program_abspath("phism-opt"),
+            src_file,
+            f'-replace-constant-arguments="name={get_top_func(src_file)}"',
+            "-canonicalize",
+        ]
+
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+
+        return self
+
+
     def loop_transforms_for_cpu(self):
         """Run Phism loop transforms."""
 
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
         if not self.options.loop_transforms:
             return self
+
+
+        self.logger.debug(
+            f'"--loop-transforms" also activated the scop_decomposition_for_cpu() function.'
+        )
+
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
             ".mlir", ".lt.mlir"
@@ -1270,6 +1706,54 @@ class PbFlow():
         return self
 
 
+    def scop_stmt_inline_for_cpu(self):
+        """Inline scop.stmt."""
+
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
+        if self.options.loop_transforms:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--loop-transforms" is active. "-scop-stmt-inline" already used in "loop_transforms_for_cpu()."'
+            )
+            return self
+
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(
+            ".mlir", ".si.mlir"
+        )
+        log_file = self.cur_file.replace(".mlir", ".log")
+
+        args = [
+            self.get_program_abspath("phism-opt"),
+            src_file,
+            "-scop-stmt-inline",
+            "-debug-only=loop-transforms",
+        ]
+
+        self.run_command(
+            cmd=" ".join(args),
+            shell=True,
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            env=self.env,
+        )
+
+        return self
+
+
     def transform_for_scalehls(self):
 
         """
@@ -1279,6 +1763,20 @@ class PbFlow():
         "func @kernel_kernel_name(..)" will be converted to "func.func @kernel_kernel_name(..)"
         But all the other parts will be intact.
         """
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" not needed, since this is a part of polygeist-->scalehls flow.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
 
         if not self.options.enable_scalehls:
             return self
@@ -1327,6 +1825,21 @@ class PbFlow():
         Scalehls optimization.
         """
 
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" not needed, since this is a part of polygeist-->scalehls flow.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
         if not self.options.enable_scalehls:
             return self
         
@@ -1366,6 +1879,20 @@ class PbFlow():
         """
         Scalehls mlir to cpp translation.
         """
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" not needed, since this is a part of polygeist-->scalehls flow.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
 
         if not self.options.enable_scalehls:
             return self
@@ -1407,6 +1934,20 @@ class PbFlow():
         E.g. filename: "kernel_hls_2mm.cpp", KernelName: "kernel_hls_2mm()"
         """
 
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" not needed, since this is a part of polygeist-->scalehls flow.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
         if not self.options.enable_scalehls:
             return self
         
@@ -1439,11 +1980,32 @@ class PbFlow():
 
     def mlir_opt_chain_for_cpu(self):
         """mlir-opt CHAIN for CPU."""
-        
-        if self.options.only_kernel_transformation:
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
             return self
-        
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
+        if self.options.only_kernel_transformation:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for preparing the MLIR-->llvm targeting cpu bin/exe.'
+            )
+            return self
+
+
         if self.options.enable_scalehls:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for preparing the MLIR-->llvm targeting cpu bin/exe.'
+            )
             return self
         
 
@@ -1480,10 +2042,31 @@ class PbFlow():
     def translate_mlir_to_llvmir_for_cpu(self):
         """mlir-opt CHAIN for CPU."""
 
-        if self.options.only_kernel_transformation:
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir transformation function, since "--enable-polly" flag is active.'
+            )
             return self
 
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
+        if self.options.only_kernel_transformation:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for preparing the llvm IR to cpu bin/exe.'
+            )
+            return self
+
+
         if self.options.enable_scalehls:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-scalehls" is for MLIR-->CPP translation.'
+            )
             return self
         
 
@@ -1498,14 +2081,6 @@ class PbFlow():
             self.get_program_abspath("mlir-translate"),
             src_file,
             "--mlir-to-llvmir"
-            "|",
-            self.get_program_abspath("opt"),
-            "-S",
-            (
-                "-O3" if self.options.clang_opt_bin else 
-                "-O0 --disable-loop-unrolling"  # add optimization flags
-            ),
-
         ]
 
         self.run_command(
@@ -1515,28 +2090,111 @@ class PbFlow():
             stdout=open(self.cur_file, "w"),
             env=self.env,
         )
+
         return self
     
 
-    def compile_bin_for_cpu(self):
-        """Compile bin for CPU."""
+    def clang_or_polly_omp_opt_for_cpu(self):
 
-        if self.options.only_kernel_transformation:
-            return self
+        """
+        Polygeist or polly, both will be using same optimization
+        """
 
         if self.options.enable_scalehls:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for preparing the llvm IR to cpu bin/exe.'
+            )
             return self
         
-
+        
         assert self.cur_file.endswith(".ll"), "Should be an llvm (i.e. *.ll) file."
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
             ".ll",
+            # ".opt.ll",
             (
-                ".clang-opt.exe" if self.options.clang_opt_bin else 
-                ".no-clang-opt.exe"
+                ".polly-omp-opt.ll" if self.options.polly_omp_opt else
+                ".clang-opt.ll" if self.options.clang_opt else
+                ".no-opt.ll"  # add optimization flags
             ),
         )
+
+        log_file = self.cur_file.replace(".ll", ".log")        
+
+        self.run_command(
+            cmd=" ".join(
+                [
+                    # Clang preprocessing for the llvm
+                    self.get_program_abspath("clang"),
+                    (
+                        # If polygeist is enabled, turn off all optimization
+                        # By default, when compiling with -O0, Clang adds an "optnone" attribute to all functions in the IR.
+                        # This attribute tells LLVM's optimization passes to skip these functions entirely.
+                        # The "-disable-O0-optnone" flag prevents Clang from adding this attribute, allowing passes like -polly-canonicalize to run on the IR.
+                        "-O0 -Xclang -disable-O0-optnone" if self.options.enable_polygeist else 
+                        ""  # else 
+                    ),
+                    src_file,
+                    "-emit-llvm",
+                    "-S",
+                    "-o",
+                    "-",
+                    "|",
+                    
+                    # Canonicalize for polly
+                    self.get_program_abspath("opt"),
+                    # src_file,
+                    "-polly-canonicalize",
+                    "-S",
+                    "-o",
+                    "-",
+                    "|",
+
+                    # Optimize using clang
+                    self.get_program_abspath("clang"),
+                    "-x ir -",  # Accepting the IR through pipe
+                    self.prep_clang_or_polly_omp_opt_flags_for_cpu(),
+                    # src_file,
+                    "-S",
+                    "-emit-llvm",
+                    "-o",
+                    self.cur_file,
+                    "-mllvm -debug-pass=Arguments"
+
+                ]
+            ),
+            stderr=open(log_file, "w"),
+            stdout=open(self.cur_file, "w"),
+            shell=True,
+            env=self.env,
+        )
+
+        return self
+
+
+    def compile_bin_for_cpu(self):
+        
+        """
+        
+        """
+
+        if self.options.only_kernel_transformation:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for preparing the llvm IR to cpu bin/exe.'
+            )
+            return self
+
+
+        if self.options.enable_scalehls:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for preparing the llvm IR to cpu bin/exe.'
+            )
+            return self
+
+
+        assert self.cur_file.endswith(".ll"), "Should be an llvm (i.e. *.ll) file."
+
+        src_file, self.cur_file = self.cur_file, self.cur_file.replace(".ll", ".exe")
 
         log_file = self.cur_file.replace(".ll", ".log")
         
@@ -1544,12 +2202,13 @@ class PbFlow():
             cmd=" ".join(
                 [
                     self.get_program_abspath("clang"),
+                    self.prep_clang_or_polly_omp_opt_flags_for_cpu(),
                     src_file,
                     os.path.join(
                         self.work_dir, "utilities", "polybench.c"
                     ),
                     # if self.options.sanity_check==True: then return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS", else "-D {self.options.dataset}_DATASET -D POLYBENCH_TIME"
-                    self.prep_polybench_c_macro_compile_flags(),
+                    self.prep_c_macro_compile_flags(),
                     "-I",
                     os.path.join(
                         self.llvm_build_dir,
@@ -1560,15 +2219,11 @@ class PbFlow():
                     ),
                     "-I",
                     os.path.join(self.work_dir, "utilities"),
-                    self.prep_clang_opt_flags_for_cpu(),
-                    # (
-                    #     "-O3" if self.options.clang_opt_bin else 
-                    #     "-O0 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize"  # add optimization flags
-                    # ),
                     "-lm",
                     "-lc",
                     "-o",
-                    self.cur_file
+                    self.cur_file,
+                    "-mllvm -debug-pass=Arguments",
                 ]
             ),
             stdout=open(self.cur_file, "w"),
@@ -1576,8 +2231,9 @@ class PbFlow():
             shell=True,
             env=self.env,
         )
-        return self    
-    
+
+        return self
+
 
     def run_bin_on_cpu(self):
         """Run the 'cpu.exe' file. Assuming the 'cpu.exe' file has been generated/compiled.
@@ -1588,10 +2244,24 @@ class PbFlow():
         
         """
 
-        if self.options.only_kernel_transformation:
+        if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" due to "only-compilation" mode, since none of the "--run-bin-on-cpu" and "--verify-benchmark-result" flags has been activated.'
+            )
             return self
 
+
+        if self.options.only_kernel_transformation:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for preparing the llvm IR to cpu bin/exe.'
+            )
+            return self
+
+
         if self.options.enable_scalehls:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-scalehls" is for MLIR-->CPP translation.'
+            )
             return self
         
 
@@ -1653,18 +2323,31 @@ class PbFlow():
         """
 
         if self.options.only_kernel_transformation:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is only for verifying the result.'
+            )
             return self
-        
+
+
         if self.options.enable_scalehls:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-scalehls" is for MLIR-->CPP translation.'
+            )
             return self
         
         
         # If there is an kernel execution error, there is no point in result checking
         if self.is_kernel_execution_error_found:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since execution err detected in "run_bin_pn_cpu()" function.'
+            )
             return self
 
 
         if not self.options.verify_benchmark_result:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--verify-benchmark-result" flag is not active.'
+            )
             return self
         
 
@@ -1885,14 +2568,24 @@ class PbFlow():
         """
 
         if self.options.only_kernel_transformation:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is only for verifying the result.'
+            )
             return self
 
+
         if self.options.enable_scalehls:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-scalehls" is for MLIR-->CPP translation.'
+            )
             return self
         
 
         # If one of the following options are not set, then continue for the the transformation
         if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" due to "only-compilation" mode, since none of the "--run-bin-on-cpu" and "--verify-benchmark-result" flags has been activated.'
+            )
             return self
 
 
@@ -2275,86 +2968,84 @@ def pb_flow_process(relative_temp_kernel_dir: str, work_dir: str, options: PbFlo
     # Check for different kind of error found
     # Always have to check this "only_kernel_transformation" first
     if options.only_kernel_transformation:
-        if not options.dry_run:
 
-            if is_kernel_transformation_error(temp_kernel_abs_dir):
-                
-                print(
-                    '>>> Transformation Error occured for {:15s}  Status: {}  Error: "{}"'.format(
-                        os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
-                    )
+        if is_kernel_transformation_error(temp_kernel_abs_dir):
+            
+            print(
+                '>>> Transformation Error occured for {:15s}  Status: {}  Error: "{}"'.format(
+                    os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
                 )
-            else:
-                # print("I am hit", is_kernel_transformation_error(temp_kernel_abs_dir))
-                print(
-                    '>>> Transformation Successfull for {:15s}  Status: {}  Error: "{}"'.format(
-                        os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
-                    )
+            )
+        else:
+            # print("I am hit", is_kernel_transformation_error(temp_kernel_abs_dir))
+            print(
+                '>>> Transformation Successfull for {:15s}  Status: {}  Error: "{}"'.format(
+                    os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
                 )
+            )
+
 
     elif options.run_bin_on_cpu or options.verify_benchmark_result or options.sanity_check:
 
-        if not options.dry_run:
-
-            if is_kernel_transformation_error(temp_kernel_abs_dir):
-                    
-                # print("I am hit", is_kernel_transformation_error(temp_kernel_abs_dir))
-                print(
-                    '>>> Transformation Error occured {:15s}  Status: {}  Error: "{}"'.format(
-                        os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
-                    )
+        if is_kernel_transformation_error(temp_kernel_abs_dir):
+                
+            # print("I am hit", is_kernel_transformation_error(temp_kernel_abs_dir))
+            print(
+                '>>> Transformation Error occured {:15s}  Status: {}  Error: "{}"'.format(
+                    os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
                 )
+            )
 
-            elif is_kernel_execution_error_found(temp_kernel_abs_dir):
+        elif is_kernel_execution_error_found(temp_kernel_abs_dir):
 
-                print(
-                    '>>> Execution error occured {:15s}  Status: {}  Error: "{}"'.format(
-                        os.path.basename(temp_kernel_abs_dir), flow.status, fetch_kernel_execution_error_status(temp_kernel_abs_dir)
-                    )
+            print(
+                '>>> Execution error occured {:15s}  Status: {}  Error: "{}"'.format(
+                    os.path.basename(temp_kernel_abs_dir), flow.status, fetch_kernel_execution_error_status(temp_kernel_abs_dir)
                 )
-            
-            elif is_kernel_result_verification_error_found(temp_kernel_abs_dir):
+            )
+        
+        elif is_kernel_result_verification_error_found(temp_kernel_abs_dir):
 
-                print(
-                    '>>> Result verification error occured {:15s}  Status: {}  Error: "{}"'.format(
-                        os.path.basename(temp_kernel_abs_dir), flow.status, fetch_kernel_result_verification_error_status(temp_kernel_abs_dir)
-                    )
+            print(
+                '>>> Result verification error occured {:15s}  Status: {}  Error: "{}"'.format(
+                    os.path.basename(temp_kernel_abs_dir), flow.status, fetch_kernel_result_verification_error_status(temp_kernel_abs_dir)
                 )
-            
-            else:
-                # Retrieve dir of the "kernel_name.cpu.profile.log"
-                profile_log_file = os.path.join(
-                    temp_kernel_abs_dir,
-                    "cpu.profile.log"
-                )
+            )
+        
+        else:
+            # Retrieve dir of the "kernel_name.cpu.profile.log"
+            profile_log_file = os.path.join(
+                temp_kernel_abs_dir,
+                "cpu.profile.log"
+            )
 
-                # Read the "kernel_name.cpu.profile.log"
-                with open(profile_log_file, "r") as file:
-                    profile_log_content = file.read()
-                    file.close()
+            # Read the "kernel_name.cpu.profile.log"
+            with open(profile_log_file, "r") as file:
+                profile_log_content = file.read()
+                file.close()
 
-                print(
-                    '>>> Finished {:15s} elapsed: {:.6f} secs   Status: {}  Error: "{}"'.format(
-                        os.path.basename(temp_kernel_abs_dir), float(profile_log_content), flow.status, flow.errmsg
-                    )
+            print(
+                '>>> Finished {:15s} elapsed: {:.6f} secs   Status: {}  Error: "{}"'.format(
+                    os.path.basename(temp_kernel_abs_dir), float(profile_log_content), flow.status, flow.errmsg
                 )
+            )
 
     # Just compile and do nothing else
     else:
-        if not options.dry_run:
-            if is_kernel_transformation_error(temp_kernel_abs_dir):   
-                # print("I am hit", is_kernel_transformation_error(temp_kernel_abs_dir))
-                print(
-                    '>>> Transformation Error occured {:15s}  Status: {}  Error: "{}"'.format(
-                        os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
-                    )
+
+        if is_kernel_transformation_error(temp_kernel_abs_dir):   
+            # print("I am hit", is_kernel_transformation_error(temp_kernel_abs_dir))
+            print(
+                '>>> Transformation Error occured {:15s}  Status: {}  Error: "{}"'.format(
+                    os.path.basename(temp_kernel_abs_dir), flow.status, flow.errmsg
                 )
-            else:
-                print(
-                    '>>> Finished {:15s} elapsed: {:.6f} secs   Status: {}  Error: "{}"'.format(
-                        os.path.basename(temp_kernel_abs_dir), float(0.00), flow.status, flow.errmsg
-                    )
+            )
+        else:
+            print(
+                '>>> Finished {:15s} elapsed: {:.6f} secs   Status: {}  Error: "{}"'.format(
+                    os.path.basename(temp_kernel_abs_dir), float(0.00), flow.status, flow.errmsg
                 )
+            )
         
 
 
@@ -2371,75 +3062,89 @@ def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
 
     # print(final_kernel_relative_dir_list)
 
-    # If performance run or verification of benchmark results, then use same format for log
-    if options.run_bin_on_cpu or options.verify_benchmark_result:
+    # Create records for each directory
+    records = [
+        Record (
 
-        # Create records for each directory
-        records = [
-            Record (
-                os.path.basename(each_kernel_dir),  # kernel name
-                # "dummy-operation-name",
-                # here is "operation_name" field
-                (
-                    "cpu-exe-opt" if options.run_bin_on_cpu and options.clang_opt_bin else
-                    "cpu-exe-no-opt" if options.run_bin_on_cpu and not options.clang_opt_bin else
-                    "verification" if options.verify_benchmark_result else 
-                    "unknown"  # Optional fallback if none of the options are True
-                ),
-                "yes" if options.polymer else "no",
-                0.00 if is_kernel_transformation_error(each_kernel_dir) else fetch_kernel_execution_time(each_kernel_dir),
-                "yes" if is_kernel_execution_error_found(each_kernel_dir) else "no",
-                (
-                    "N/A" if options.run_bin_on_cpu else # For kernel performance execution, verification is not applicable
-                    "yes" if is_kernel_result_verification_error_found(each_kernel_dir) else "no"
-                ),
-                
+            # "kernel" field (i.e. kernel name, e.g. 2mm)
+            os.path.basename(each_kernel_dir),
 
-                (
-                    "transformation error" if is_kernel_transformation_error(each_kernel_dir) else
-                    fetch_kernel_execution_error_status(each_kernel_dir) if is_kernel_execution_error_found(each_kernel_dir) else
-                    fetch_kernel_result_verification_error_status(each_kernel_dir) if is_kernel_result_verification_error_found(each_kernel_dir) else
-                    "No Error"
-                )
+            # "type" field (i.e. "mlir-transform", "scalehls-transform", "polly-transform", "only-compilation", "verification", "execution", "unknown")
+            (
+                "mlir-transform" if options.enable_polygeist and options.only_kernel_transformation and not options.enable_scalehls else
+                "scalehls-transform" if options.enable_polygeist and options.only_kernel_transformation and options.enable_scalehls else
+                "polly-transform" if options.enable_polly and options.only_kernel_transformation else
+                "only-compilation" if not options.run_bin_on_cpu and not options.verify_benchmark_result and not options.only_kernel_transformation else
+                "verification" if options.verify_benchmark_result else 
+                "execution" if options.run_bin_on_cpu else
+                "unknown"  # Optional fallback if none of the options are True
+            ),
+            
+            # "flow" field (i.e. "polygeist", "polly-llvm", "polyg-scalehls", "not-found")
+            (
+                "polygeist" if options.enable_polygeist else
+                "polly-llvm" if options.enable_polly else
+                "polyg-scalehls" if options.enable_scalehls else
+                "not-found"
+            ),
+
+            # "device" field (i.e. "{cpu-model}" or "fpga")
+            (
+                "cpu" if options.enable_polygeist else
+                "cpu" if options.enable_polly else
+                "fpga" if options.enable_scalehls else
+                "not-found"
+            ),
+
+            # "polyhedral" field (i.e. "polymer", "polly-isl", "no", "not-found")
+            (
+                "polymer" if options.polymer else
+                "polly-isl" if options.enable_polly and options.enable_polly_polyhedral else
+                "no" if options.enable_polly and not options.enable_polly_polyhedral else
+                "not-found"
+            ),
+
+            # "optimization" field (i.e. "clang-opt", "polly-omp-opt", "no-opt")
+            (
+                "clang-opt" if options.clang_opt else
+                "polly-omp-opt" if options.polly_omp_opt else
+                "no-opt"
+            ),
+
+            # "time" field
+            (
+                0.00 if is_kernel_transformation_error(each_kernel_dir) else
+                0.00 if is_kernel_execution_error_found(each_kernel_dir) else
+                0.00 if is_kernel_result_verification_error_found(each_kernel_dir) else
+                0.00 if options.only_kernel_transformation else
+                0.00 if not options.run_bin_on_cpu or not options.verify_benchmark_result else
+                fetch_kernel_execution_time(each_kernel_dir)
+            ),
+
+            # "exec_err" field
+            (
+                "yes" if is_kernel_execution_error_found(each_kernel_dir) else
+                "N/A" if options.only_kernel_transformation else
+                "no"
+            ),
+
+            # "veri_err" field
+            (
+                "N/A" if not options.verify_benchmark_result else # For kernel performance execution, verification is not applicable
+                "yes" if is_kernel_result_verification_error_found(each_kernel_dir) else "no"
+            ),
+            
+            # "run_status" field
+            (
+                "transformation error" if is_kernel_transformation_error(each_kernel_dir) else
+                fetch_kernel_execution_error_status(each_kernel_dir) if is_kernel_execution_error_found(each_kernel_dir) else
+                fetch_kernel_result_verification_error_status(each_kernel_dir) if is_kernel_result_verification_error_found(each_kernel_dir) else
+                "No Error"
             )
-            for each_kernel_dir in final_kernel_relative_dir_list
-        ]
+        )
+        for each_kernel_dir in final_kernel_relative_dir_list
+    ]
     
-    # Only compilation flow
-    elif not options.run_bin_on_cpu and not options.verify_benchmark_result and not options.only_kernel_transformation:
-        # Create records for each directory
-        records = [
-            Record(
-                os.path.basename(each_kernel_dir),  # kernel name
-                "only-compilation",
-                "yes" if options.polymer else "no",
-                0.00,   # Default 0.00
-                "N/A",
-                "N/A",
-                "Compilation Success" if not is_kernel_transformation_error(each_kernel_dir) else "Compilation Error"
-            )
-            for each_kernel_dir in final_kernel_relative_dir_list
-        ]
-
-    elif options.only_kernel_transformation:
-        # Create records for each directory
-        records = [
-            Record(
-                os.path.basename(each_kernel_dir),  # kernel name
-                ( 
-                    "mlir-transform" if options.only_kernel_transformation and not options.enable_scalehls else
-                    "scalehls-transform" if options.only_kernel_transformation and options.enable_scalehls else
-                    "unknown"  # Optional fallback if none of the options are True
-                ),
-                "yes" if options.polymer else "no",
-                0.00,   # Default 0.00
-                "N/A",
-                "N/A",
-                "Transformation Success" if not is_kernel_transformation_error(each_kernel_dir) else "Transformation Error"
-            )
-            for each_kernel_dir in final_kernel_relative_dir_list
-        ]
-
     return records
 
 
@@ -2529,6 +3234,20 @@ def pb_flow_runner(options: PbFlowOptions, dump_report: bool = True):
         )
     end = timer()
     print("Elapsed time: {:.6f} sec".format(end - start))
+
+    # # Without multithreading:
+
+    # # Discover the tasks
+    # kernels = discover_examples(options.work_dir, examples=options.examples, excludes=options.excl)
+
+    # # (No Multithreading) Process each kernel sequentially
+    # for kernel_dir in kernels:
+    #     start = timer()
+    #     # Call pb_flow_process with required arguments
+    #     pb_flow_process(kernel_dir, options.work_dir, options)
+    #     end = timer()
+    #     print("Elapsed time: {:.6f} sec".format(end - start))
+
 
     # Will only dump report if Vitis has been run.
     if dump_report:

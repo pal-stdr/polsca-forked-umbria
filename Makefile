@@ -6,7 +6,7 @@ phism=/workspace
 # vhls=/tools/Xilinx/2020.2
 vhls=/opt/Xilinx/2022.2
 # th=1
-th=20
+th=1
 
 # example=2mm
 
@@ -142,7 +142,9 @@ clean-umbria-cpu:
 
 # --------------------- UMBRIA POLYBENCH CPU FLOW ---------------------
 
-include makefile_polybench_targets
+include makefile_polybench_polygeist_targets
+
+include makefile_polybench_polly_llvm_targets
 
 
 
@@ -151,4 +153,6 @@ include makefile_polybench_targets
 
 # --------------------- UMBRIA POLYBENCH BRAIN HSI CPU FLOW ---------------------
 
-include makefile_brain_hsi_linear_svm_targets
+include makefile_brain_hsi_polygeist_targets
+
+include makefile_brain_hsi_polly_llvm_targets

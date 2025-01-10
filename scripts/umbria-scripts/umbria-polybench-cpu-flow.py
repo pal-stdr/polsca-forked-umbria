@@ -95,9 +95,33 @@ def main():
     )
 
     parser.add_argument(
+        "--enable-polygeist",
+        action="store_true",
+        help="polygeist MLIR transformation chain"
+    )
+
+    parser.add_argument(
+        "--enable-polly",
+        action="store_true",
+        help="Polly llvm transform activation"
+    )
+
+    parser.add_argument(
         "--only-kernel-transformation",
         action="store_true",
         help="Only transform the kernel. No host"
+    )
+
+    parser.add_argument(
+        "--enable-polly-polyhedral",
+        action="store_true",
+        help="Polly isl scheduling on llvm"
+    )
+
+    parser.add_argument(
+        "--polly-omp-opt",
+        action="store_true",
+        help="Polly openmp llvm codegen"
     )
 
     parser.add_argument(
@@ -107,7 +131,7 @@ def main():
     )
 
     parser.add_argument(
-        "--clang-opt-bin",
+        "--clang-opt",
         action="store_true",
         help="optimization (if not enabled, following flags will be added -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize).",
     )

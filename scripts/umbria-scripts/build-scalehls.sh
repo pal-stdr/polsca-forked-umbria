@@ -31,7 +31,6 @@ export PATH="${LLVM_16_BUILD_BIN_DIR}${PATH:+:${PATH}}"
 
 # Go to the llvm directory and carry out installation.
 POLYGEIST_LLVM_BUILD_DIR="${POLSCA_ROOT_DIR}/llvm-16-src-build-for-scalehls"
-CLANG_BUILD_DIR="${POLSCA_ROOT_DIR}/llvm-14-src-build-for-polygeist-polymer-polsca"
 
 
 # Scalehls src dir
