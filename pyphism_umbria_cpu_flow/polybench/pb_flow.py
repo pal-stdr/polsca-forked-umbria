@@ -412,7 +412,8 @@ class PbFlow():
                 .transform_for_scalehls()   # Will only be used for "self.options.enable_scalehls==True"
                 .scalehls_opt()
                 .scalehls_translate_to_cpp()
-                .rename_scalehls_cpp_kernel()
+                .rename_and_dump_scalehls_cpp_kernel()
+                .put_extern_c_wrapper_around_scalehls_kernel()
                 .mlir_opt_chain_for_cpu()
                 # .lower_llvm()
                 # .polygeist_sanity_check()
@@ -966,40 +967,31 @@ class PbFlow():
 
     def prep_c_macro_compile_flags(self):
 
-        # if self.options.sanity_check is not True:
-        #     return f"-D {self.options.dataset}_DATASET -D POLYBENCH_TIME -D POLYBENCH_PAPI -I {os.path.join(self.papi_installation_dir, 'include')} -L {os.path.join(self.papi_installation_dir, 'lib')} -lpapi"
-        # else:
-        #     return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS"
+        """
+        Macro compile flags setter based on Polybench. It will apply also on brain HSI flow.
+        """
 
-        # Base flags
+        # Determine which dataset to use
+        # Use MINI dataset by default, or SMALL if explicitly specified
+        dataset = self.options.dataset if self.options.dataset in ("MINI", "SMALL", "MEDIUM", "LARGE", "EXTRALARGE") else "MINI"
+
+        # Default Base flags
         flags = [
-
+            "-D POLYBENCH_TIME",    # This will be dynamically removed from "dump_test_data_for_cpu()"
+            f'-D {dataset}_DATASET',
         ]
+
 
         # If --verify-benchmark-result or --sanity-check is enabled
         if self.options.sanity_check or self.options.verify_benchmark_result or self.options.dump_test_data_cpu:
             # Turn off the papi
             self.options.enable_papi = False
+            flags += ["-D POLYBENCH_DUMP_ARRAYS"]
 
-            # Use MINI dataset by default, or SMALL if explicitly specified
-            dataset = self.options.dataset if self.options.dataset in ("MINI", "SMALL", "MEDIUM", "LARGE", "EXTRALARGE") else "MINI"
-
-            # "-D POLYBENCH_TIME" will be always used, doesn't matter it is verification or performance run
-            flags += [f"-D {dataset}_DATASET", "-D POLYBENCH_DUMP_ARRAYS", "-D POLYBENCH_TIME"]
-        else:
-            flags += [f"-D {self.options.dataset}_DATASET"]
         
         # If papi is enabled (papi needs "-D POLYBENCH_TIME") (If sanity_check is enabled, it will automatically deactivate the papi)
         if self.options.enable_papi:
-            flags += ["-D POLYBENCH_PAPI", "-D POLYBENCH_TIME", f"-I {os.path.join(self.papi_installation_dir, 'include')}", f"-L {os.path.join(self.papi_installation_dir, 'lib')}", "-lpapi"]
-
-
-        # # (sanity_check or verify_results or enable_papi) if any one of them is eanabled, donot add "-D POLYBENCH_TIME"
-        # if self.options.sanity_check or self.options.verify_benchmark_result or self.options.enable_papi:
-        #     pass
-        # else:
-        #     if "-D POLYBENCH_TIME" not in flags:
-        #         flags += ["-D POLYBENCH_TIME"]
+            flags += ["-D POLYBENCH_PAPI", f'-I {os.path.join(self.papi_installation_dir, "include")}', f'-L {os.path.join(self.papi_installation_dir, "lib")}', "-lpapi"]
         
 
         # print("I am hit", flags)
@@ -1059,16 +1051,28 @@ class PbFlow():
         """Compile and dump test data for result verification."""
 
         if self.options.only_kernel_transformation:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for dumping the test data for given kernel.'
+            )
             return self
 
 
         if not self.options.dump_test_data_cpu and not self.options.verify_benchmark_result:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()". To use it, you have to either pass "--dump-test-data-cpu" or "--verify-benchmark-result".'
+            )
             return self
 
 
         # With papi activated, we will only do the performance test
         if self.options.enable_papi is True:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()". Because it doesnt make sense to dump data for papi performance flow.'
+            )
             return self
+
+        # Remove "-D POLYBENCH_TIME" from the flag block. Because for dumping data, we donot need to measure the time.
+        prep_c_macro_compile_flags = self.prep_c_macro_compile_flags().replace("-D POLYBENCH_TIME", "").strip()
 
 
         out_file = self.get_golden_out_file()
@@ -1078,7 +1082,7 @@ class PbFlow():
                 [
                     self.get_program_abspath("clang"),
                     # if self.options.sanity_check==True: then return "-D MINI_DATASET -D POLYBENCH_DUMP_ARRAYS", else "-D {self.options.dataset}_DATASET -D POLYBENCH_TIME"
-                    self.prep_c_macro_compile_flags(),
+                    prep_c_macro_compile_flags,
                     "-I",
                     os.path.join(self.work_dir, "utilities"),
                     "-I",
@@ -1222,7 +1226,7 @@ class PbFlow():
             return self
 
         
-        assert self.cur_file.endswith(".ll"), "Should be an llvm (i.e. *.ll) file."
+        assert self.cur_file.endswith(".ll"), f'Should be an llvm (*.ll) file. Hit from "{inspect.currentframe().f_code.co_name}()"'
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(".ll", ".polly-isl.ll")
 
@@ -1305,7 +1309,6 @@ class PbFlow():
 
         log_file = self.cur_file.replace(".mlir", ".log")
 
-        # print(self.prep_c_macro_compile_flags())
 
         self.run_command(cmd=f'sed -i "s/static//g" {src_file}', shell=True)
         self.run_command(
@@ -1460,11 +1463,11 @@ class PbFlow():
 
 
         if self.options.only_kernel_transformation is True:
-            keep_all = False
+            is_keep_all = False
         elif self.options.enable_scalehls is True:
-            keep_all = False
+            is_keep_all = False
         else:
-            keep_all = True
+            is_keep_all = True
 
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
@@ -1475,7 +1478,7 @@ class PbFlow():
         args = [
             self.get_program_abspath("phism-opt"),
             src_file,
-            f'-extract-top-func="name={get_top_func(src_file)} keepall={keep_all}"',
+            f'-extract-top-func="name={get_top_func(src_file)} keepall={is_keep_all}"',
             "-debug",
         ]
         self.run_command(
@@ -1554,6 +1557,9 @@ class PbFlow():
 
 
         if not self.options.polymer:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()" mlir pluto transformation function, since "--polymer" or "--p" flag is not passed.'
+            )
             return self
 
 
@@ -1766,7 +1772,7 @@ class PbFlow():
 
         if self.options.enable_polly:
             self.logger.debug(
-                f'Skipped "{inspect.currentframe().f_code.co_name}()" not needed, since this is a part of polygeist-->scalehls flow.'
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since this is a part of polygeist-->scalehls flow.'
             )
             return self
 
@@ -1828,7 +1834,7 @@ class PbFlow():
 
         if self.options.enable_polly:
             self.logger.debug(
-                f'Skipped "{inspect.currentframe().f_code.co_name}()" not needed, since this is a part of polygeist-->scalehls flow.'
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since this is a part of polygeist-->scalehls flow.'
             )
             return self
 
@@ -1882,7 +1888,7 @@ class PbFlow():
 
         if self.options.enable_polly:
             self.logger.debug(
-                f'Skipped "{inspect.currentframe().f_code.co_name}()" not needed, since this is a part of polygeist-->scalehls flow.'
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since this is a part of polygeist-->scalehls flow.'
             )
             return self
 
@@ -1895,10 +1901,13 @@ class PbFlow():
 
 
         if not self.options.enable_scalehls:
+            self.logger.debug(
+                f'Use "--enable-scalehls" flag to activate "{inspect.currentframe().f_code.co_name}()" scalehls translation function.'
+            )
             return self
         
 
-        assert self.cur_file.endswith(".mlir"), "Should be an mlir (i.e. *.mlir) file."
+        assert self.cur_file.endswith(".mlir"), f'Should be an "*.mlir" file. Hit from "{inspect.currentframe().f_code.co_name}()"'
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
             ".mlir", ".sclhls-trns.cpp"
@@ -1926,7 +1935,7 @@ class PbFlow():
         return self
 
     
-    def rename_scalehls_cpp_kernel(self):
+    def rename_and_dump_scalehls_cpp_kernel(self):
 
         """
         Rename scalehls cpp kernel.
@@ -1936,7 +1945,7 @@ class PbFlow():
 
         if self.options.enable_polly:
             self.logger.debug(
-                f'Skipped "{inspect.currentframe().f_code.co_name}()" not needed, since this is a part of polygeist-->scalehls flow.'
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since this is a part of polygeist-->scalehls flow.'
             )
             return self
 
@@ -1949,33 +1958,118 @@ class PbFlow():
 
 
         if not self.options.enable_scalehls:
+            self.logger.debug(
+                f'Use "--enable-scalehls" flag to activate "{inspect.currentframe().f_code.co_name}()" scalehls translation function.'
+            )
             return self
         
 
-        assert self.cur_file.endswith(".cpp"), "Should be an mlir (i.e. *.cpp) file."
-
+        assert self.cur_file.endswith(".cpp"), f'Should be an "*.cpp" file. Hit from "{inspect.currentframe().f_code.co_name}()"'
 
         src_file = self.cur_file
-        
-        # Make the dir a new HLS kernel file.
-        # Rename "**/covariance/*.sclhls-trns.cpp" to "**/covariance/kernel_{kernel-name}.cpp"
-        kernel_file = os.path.join(
+
+
+        # rename the "blabla.bla.bla.cpp" to "kernel_kname.cpp"
+        self.cur_file = os.path.join(
             os.path.dirname(self.cur_file), (get_top_func(self.cur_file) + ".cpp")
         )
         
-        # Create the kernel file
-        open(kernel_file, "a").close()
 
         self.run_command(
             shell=True,
             text=True,   # Treat input/output as text
-            cmd_list=[f"tee {kernel_file} < {src_file}"],  # Redirects the content of src_file to tee.
+            cmd_list=[f"tee {self.cur_file} < {src_file}"],  # Redirects the content of src_file to tee.
             stdout=subprocess.PIPE,     # Optional: Capture `tee` output (not needed here)
             stderr=subprocess.PIPE,     # Optional: Capture errors
             env=self.env
         )
 
         return self        
+
+
+    def put_extern_c_wrapper_around_scalehls_kernel(self):
+
+        """
+        put 'extern "C" { }' wrapper around the kernel definition.
+        """
+
+        if self.options.enable_polly:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since this is a part of polygeist-->scalehls flow.'
+            )
+            return self
+
+
+        if not self.options.enable_polygeist:
+            self.logger.debug(
+                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+            )
+            return self
+
+
+        if not self.options.enable_scalehls:
+            self.logger.debug(
+                f'Use "--enable-scalehls" flag to activate "{inspect.currentframe().f_code.co_name}()" scalehls translation function.'
+            )
+            return self
+        
+
+        assert self.cur_file.endswith(".cpp"), f'Should be an "*.cpp" file. Hit from "{inspect.currentframe().f_code.co_name}()"'
+
+
+
+        # Variable holding the function name
+        function_name = get_top_func(self.cur_file)
+
+
+        # Create the dynamic regex pattern
+        kernel_function_pattern = fr"^\s*void\s+{re.escape(function_name)}\s*\("
+
+        # Regex to find the last closing brace at EOF
+        last_closing_brace_pattern = r"}\s*\Z"
+
+
+        with open(self.cur_file, "r") as file:
+            cpp_file_content = file.read().strip()
+            file.close()
+
+
+        # Add `extern "C" {` above the function definition
+        cpp_file_content = re.sub(
+            kernel_function_pattern,
+            r'extern "C" {\n\g<0>',
+            cpp_file_content,
+            flags=re.MULTILINE
+        )
+
+        # Add `}` at the end of the file after the last closing brace
+        cpp_file_content = re.sub(
+            last_closing_brace_pattern,
+            r"}\n}",
+            cpp_file_content,
+            flags=re.MULTILINE
+        )
+
+
+        # # Write the modified content back to the file
+        # # cmd_list=[f'tee {self.cur_file} < {cpp_file_content}'] will not work. Because Shell redirection (<) expects a file path, not the file content.
+        # # Also "cpp_file_content" contains some special characters which cannot be passed through piping.
+        # with open(self.cur_file, "w") as file:
+        #     file.write(cpp_file_content)
+        #     file.close()
+
+
+        self.run_command(
+            shell=True,
+            text=True,   # Treat input/output as text
+            cmd_list=[f'tee {self.cur_file}'],  # Replace with your desired command
+            stdout=subprocess.PIPE,     # Optional: Capture `tee` output (not needed here)
+            stderr=subprocess.PIPE,     # Optional: Capture errors
+            input=cpp_file_content,     # Pass file content directly, it will not work with stdin
+            env=self.env
+        )
+
+        return self
 
 
     def mlir_opt_chain_for_cpu(self):
@@ -2100,6 +2194,13 @@ class PbFlow():
         Polygeist or polly, both will be using same optimization
         """
 
+        if self.options.only_kernel_transformation:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for optimizing the llvm targeting cpu bin/exe.'
+            )
+            return self
+
+
         if self.options.enable_scalehls:
             self.logger.debug(
                 f'Skipped "{inspect.currentframe().f_code.co_name}()", since it is for preparing the llvm IR to cpu bin/exe.'
@@ -2107,7 +2208,7 @@ class PbFlow():
             return self
         
         
-        assert self.cur_file.endswith(".ll"), "Should be an llvm (i.e. *.ll) file."
+        assert self.cur_file.endswith(".ll"), f'Should be an llvm (*.ll) file. Hit from "{inspect.currentframe().f_code.co_name}()"'
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(
             ".ll",
@@ -2192,7 +2293,7 @@ class PbFlow():
             return self
 
 
-        assert self.cur_file.endswith(".ll"), "Should be an llvm (i.e. *.ll) file."
+        assert self.cur_file.endswith(".ll"), f'Should be an llvm (*.ll) file. Hit from "{inspect.currentframe().f_code.co_name}()"'
 
         src_file, self.cur_file = self.cur_file, self.cur_file.replace(".ll", ".exe")
 
@@ -2239,8 +2340,8 @@ class PbFlow():
         """Run the 'cpu.exe' file. Assuming the 'cpu.exe' file has been generated/compiled.
         
         Some out files
-        cpu-exe.stdout.log: If "-D POLYBENCH_TIME" is active (i.e. performance flow), then the time taken for execution will be dumped to this file. But for kernel result verification flow, this file will be left empty.
-        cpu-exe.stderr.log: If "-D POLYBENCH_DUMP_ARRAY" is active (i.e. result verification flow), then the result will be dumped to this file for further result checking in next "verify_benchmark_result()" function in the chain. But for current setup, it has been found that, either for performance or result verification, it will be always populated with results.
+        cpu.exe.stdout.log: If "-D POLYBENCH_TIME" is active (i.e. performance flow), then the time taken for execution will be dumped to this file. But for kernel result verification flow, this file will be left empty.
+        cpu.exe.stderr.log: If "-D POLYBENCH_DUMP_ARRAY" is active (i.e. result verification flow), then the result will be dumped to this file for further result checking in next "verify_benchmark_result()" function in the chain. But for current setup, it has been found that, either for performance or result verification, it will be always populated with results.
         
         """
 
@@ -2267,6 +2368,9 @@ class PbFlow():
 
         # If one of the following options are not set, then continue for the the transformation
         if not self.options.run_bin_on_cpu and not self.options.verify_benchmark_result:
+            self.logger.debug(
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since none of the flag "--run-bin-on-cpu" or "--verify-benchmark-result" is active.'
+            )
             return self
 
 
@@ -2275,7 +2379,7 @@ class PbFlow():
         cpu_bin_file = self.cur_file
         base_dir = os.path.dirname(cpu_bin_file)
         
-        log_file = os.path.join(base_dir, "cpu-exe.stdout.log")
+        log_file = os.path.join(base_dir, "cpu.exe.stdout.log")
         if os.path.isfile(log_file):
             os.remove(log_file)
 
@@ -2289,12 +2393,12 @@ class PbFlow():
                         (
                             f"papi_command_line --debug PAPI_REF_CYC PAPI_TOT_CYC .{cpu_bin_file}"
                             if self.options.enable_papi is True
-                            else f"{cpu_bin_file}"
+                            else f'{cpu_bin_file}'
                         ),
                     ]
                 ),
                 stdout=open(log_file, "w"),
-                stderr=open(os.path.join(base_dir, "cpu-exe.stderr.log"), "w"), # dumped arrays are out through stderr
+                stderr=open(os.path.join(base_dir, "cpu.exe.stderr.log"), "w"), # dumped arrays are out through stderr
                 shell=True,
                 env=self.env
             )
@@ -2304,7 +2408,7 @@ class PbFlow():
             # Important!! Setting it up will activate handle_kernel_execution_error() handler
             self.is_kernel_execution_error_found = True
             # # Log the error and continue
-            # # print(f"Execution error: {e}. Stderr logged in {os.path.join(base_dir, 'cpu-exe.stderr.log')}")
+            # # print(f"Execution error: {e}. Stderr logged in {os.path.join(base_dir, 'cpu.exe.stderr.log')}")
             self.status = 1
             # self.errmsg = e
 
@@ -2351,30 +2455,23 @@ class PbFlow():
             return self
         
 
-        
-        
 
-        assert self.cur_file.endswith(".exe"), f"Should be an exe file. {self.cur_file}"
+        assert self.cur_file.endswith(".exe"), f'Should be an exe file. {self.cur_file}'
 
         # Collect golden.out file
         cpu_bin_file_name = os.path.basename(self.cur_file)
         cpu_bin_file_dir = os.path.dirname(self.cur_file)
-        cpu_bin_file_path = os.path.join(cpu_bin_file_dir, cpu_bin_file_name)
+        kernel_name = cpu_bin_file_name.split(".")[0]
+
+
+        # Collect golden.out file
         golden_result_filename = cpu_bin_file_name.split(".")[0] + ".golden.out"
         golden_result_file_path = os.path.join(cpu_bin_file_dir, golden_result_filename)
 
-        kernel_name = cpu_bin_file_name.split(".")[0]
 
-        result_out_file = self.cur_file.replace(".exe", ".out")
+        # Collect the dumped result by "run_bin_on_{device-name}()"
+        result_out_file = os.path.join(cpu_bin_file_dir, "cpu.exe.stderr.log")
 
-        self.run_command(
-            shell=True,
-            cmd_list=[cpu_bin_file_path],
-            # stdout=open(log_file, "w"),
-            stderr=open(result_out_file, "w"),
-            env=self.env,
-            
-        )
 
         # Collect the results as python list
         golden_result_list = get_regex_filtered_result_list(golden_result_file_path)
@@ -2528,12 +2625,12 @@ class PbFlow():
         create 2 log files named "cpu.profile.log" & "cpu.profile.err.log"
 
         "cpu.profile.log":
-        exec success case: execution time would be read from "cpu-exe.stdout.log", and written to "cpu.profile.log"
+        exec success case: execution time would be read from "cpu.exe.stdout.log", and written to "cpu.profile.log"
         exec error case: will be set to "0.00"
-        self.options.verify_benchmark_result case: Will be set to "0.00". Because for such case, the "cpu-exe.stdout.log" is empty.
+        self.options.verify_benchmark_result case: Will be set to "0.00". Because for such case, the "cpu.exe.stdout.log" is empty.
 
         "cpu.profile.err.log":
-        Handle execution & verification error. There will be 2 types error cases. (determined by checking "cpu-exe.stderr.log" file).
+        Handle execution & verification error. There will be 2 types error cases. (determined by checking "cpu.exe.stderr.log" file).
         1. Only for cpu execution (compiled without "-D POLYBENCH_DUMP_ARRAY").
         2. Verfication after cpu execution (compiled with "-D POLYBENCH_DUMP_ARRAY").
 
@@ -2559,11 +2656,11 @@ class PbFlow():
 
         How this function works?
 
-        self.is_kernel_execution_error_found: Read "cpu-exe.stderr.log" and match for pre-defined regex based (i.e. "ERROR_DICTIONARY["EXECUTION_ERROR"]["ERROR_MSG_MATCH_CASES"]") error case. If the regex match found, then dump the error log to "cpu.profile.err.log". And write "0.00" to "cpu.profile.log".
+        self.is_kernel_execution_error_found: Read "cpu.exe.stderr.log" and match for pre-defined regex based (i.e. "ERROR_DICTIONARY["EXECUTION_ERROR"]["ERROR_MSG_MATCH_CASES"]") error case. If the regex match found, then dump the error log to "cpu.profile.err.log". And write "0.00" to "cpu.profile.log".
 
         self.is_result_mismatch_error_found: Read "kernel.bla.bla.diff", dump it to "cpu.profile.err.log". And write "0.00" to "cpu.profile.log".
 
-        else: The performance execution flow is running. So collect the execution time from "cpu-exe.stdout.log" and dump it to "cpu.profile.log".
+        else: The performance execution flow is running. So collect the execution time from "cpu.exe.stdout.log" and dump it to "cpu.profile.log".
 
         """
 
@@ -2623,10 +2720,10 @@ class PbFlow():
 
         if self.is_kernel_execution_error_found:
 
-            # Prepapre "cpu-exe.stderr.log" to read
-            cpu_stderr_log_file = os.path.join(os.path.dirname(self.get_kernel_name_with_path()), "cpu-exe.stderr.log")
+            # Prepapre "cpu.exe.stderr.log" to read
+            cpu_stderr_log_file = os.path.join(os.path.dirname(self.get_kernel_name_with_path()), "cpu.exe.stderr.log")
 
-            # Read the "cpu-exe.stderr.log"
+            # Read the "cpu.exe.stderr.log"
             with open(cpu_stderr_log_file, "r") as file:
                 cpu_stderr_log_file_content = file.read()
                 file.close()
@@ -2700,14 +2797,14 @@ class PbFlow():
 
         else:
             # print("No std Error match found.")
-            cpu_stdout_log_file = os.path.join(base_dir, "cpu-exe.stdout.log")
+            cpu_stdout_log_file = os.path.join(base_dir, "cpu.exe.stdout.log")
 
             if not os.path.isfile(cpu_stdout_log_file):
-                raise Exception(cpu_stdout_log_file, "cpu-exe.stdout.log doesn't exist")
+                raise Exception(cpu_stdout_log_file, "cpu.exe.stdout.log doesn't exist")
             
             
             # (IMPORTANT) Handle "self.options.verify_benchmark_result"
-            # If the file "cpu-exe.stdout.log" is empty, set the value to "0.00"
+            # If the file "cpu.exe.stdout.log" is empty, set the value to "0.00"
             with open(cpu_stdout_log_file, "r") as file:
                 cpu_stdout_log_file_content = file.read()
                 file.close()
@@ -2839,7 +2936,7 @@ def fetch_kernel_execution_time(kernel_dir: str):
     # For Success case: cpu.profile.log
     profile_log_file = os.path.join(kernel_dir, "cpu.profile.log")
 
-    # Read the "cpu-exe.stderr.log"
+    # Read the "cpu.exe.stderr.log"
     with open(profile_log_file, "r") as file:
         # default read will return '0.00\n'. So need to strip() special hidden characters
         profile_log_file_content = file.read().strip()
@@ -2867,7 +2964,7 @@ def fetch_kernel_execution_error_status(kernel_dir: str):
         return "Transformation error occurred."
 
 
-    # Read the "cpu-exe.stderr.log"
+    # Read the "cpu.exe.stderr.log"
     with open(kernel_profile_err_log_file, "r") as error_file:
         # Normalize, Ensure the input content has consistent newline characters (\n).
         profile_err_log_file_content = error_file.read().replace("\r\n", "\n").replace("\r", "\n")
@@ -2911,7 +3008,7 @@ def fetch_kernel_result_verification_error_status(kernel_dir: str):
         return "Transformation error occurred."
 
 
-    # Read the "cpu-exe.stderr.log"
+    # Read the "cpu.exe.stderr.log"
     with open(kernel_profile_err_log_file, "r") as error_file:
         # Normalize, Ensure the input content has consistent newline characters (\n).
         profile_err_log_file_content = error_file.read().replace("\r\n", "\n").replace("\r", "\n")
@@ -3117,7 +3214,6 @@ def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
                 0.00 if is_kernel_execution_error_found(each_kernel_dir) else
                 0.00 if is_kernel_result_verification_error_found(each_kernel_dir) else
                 0.00 if options.only_kernel_transformation else
-                0.00 if not options.run_bin_on_cpu or not options.verify_benchmark_result else
                 fetch_kernel_execution_time(each_kernel_dir)
             ),
 

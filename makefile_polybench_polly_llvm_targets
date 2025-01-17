@@ -17,8 +17,8 @@ verify-one-polybench-kernel-with-polly-umbria-cpu-flow:
 	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLLY_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polly --dataset=$(POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --polly-omp-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
 
 
-verify-polybench-kernels-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polly --dataset=$(POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --clang-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLLY_KERNELS)
+verify-polybench-kernels-with-polly-isl-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polly-isl --dataset=$(POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --clang-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLLY_KERNELS)
 
 
 
@@ -31,12 +31,12 @@ run-polybench-kernels-with-polly-no-opt-umbria-cpu-flow:
 
 
 
-run-one-polybench-kernel-with-polly-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLLY_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-polybench-kernel-with-polly-opt --dataset=$(POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --polly-omp-opt --run-bin-on-cpu
+run-one-polybench-kernel-with-polly-isl-opt-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLLY_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-polybench-kernel-with-polly-isl-opt --dataset=$(POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --polly-omp-opt --run-bin-on-cpu
 
 
-run-polybench-kernels-with-polly-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/run-polybench-kernels-with-polly-opt --dataset=$(POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --polly-omp-opt --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLLY_KERNELS)
+run-polybench-kernels-with-polly-isl-opt-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/run-polybench-kernels-with-polly-isl-opt --dataset=$(POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --polly-omp-opt --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLLY_KERNELS)
 
 
 
@@ -48,11 +48,4 @@ compile-polybench-kernels-with-polly-umbria-cpu-flow:
 	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/compile-polybench-kernels-with-polly --dataset=$(POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --polly-omp-opt --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLLY_KERNELS)
 
 
-
-transform-one-polybench-kernel-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLLY_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-polybench-kernel-with-polly --dataset=$(POLYBENCH_DATASET) --enable-polly --only-kernel-transformation --enable-polly-polyhedral --polly-omp-opt --dump-csv-report
-
-
-transform-polybench-kernels-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/transform-polybench-kernels-with-polly --dataset=$(POLYBENCH_DATASET) --enable-polly --only-kernel-transformation --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLLY_KERNELS)
 

@@ -13,12 +13,12 @@ EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS=brain_hsi
 
 # Only --enable-polly flow
 
-verify-one-brain-hsi-kernel-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernel-with-polly --enable-polly --enable-polly-polyhedral --polly-omp-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
+verify-one-brain-hsi-kernel-with-polly-isl-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernel-with-polly-isl --enable-polly --enable-polly-polyhedral --polly-omp-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
 
 
-verify-brain-hsi-kernels-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels-with-polly --enable-polly --enable-polly-polyhedral --clang-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+verify-brain-hsi-kernels-with-polly-isl-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels-with-polly-isl --enable-polly --enable-polly-polyhedral --clang-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
 
 
 
@@ -31,28 +31,22 @@ run-brain-hsi-kernels-with-polly-no-opt-umbria-cpu-flow:
 
 
 
-run-one-brain-hsi-kernel-with-polly-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-with-polly-opt --enable-polly --enable-polly-polyhedral --polly-omp-opt --run-bin-on-cpu
+run-one-brain-hsi-kernel-with-polly-isl-opt-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-with-polly-isl-opt --enable-polly --enable-polly-polyhedral --polly-omp-opt --run-bin-on-cpu
 
 
-run-brain-hsi-kernels-with-polly-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polly-opt --enable-polly --enable-polly-polyhedral --polly-omp-opt --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
-
-
-
-compile-one-brain-hsi-kernel-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/compile-one-brain-hsi-kernel-with-polly --enable-polly --enable-polly-polyhedral --polly-omp-opt --dump-csv-report
-
-
-compile-brain-hsi-kernels-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/compile-brain-hsi-kernels-with-polly --enable-polly --enable-polly-polyhedral --polly-omp-opt --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+run-brain-hsi-kernels-with-polly-isl-opt-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polly-isl-opt --enable-polly --enable-polly-polyhedral --polly-omp-opt --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
 
 
 
-transform-one-brain-hsi-kernel-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-polly --enable-polly --only-kernel-transformation --enable-polly-polyhedral --polly-omp-opt --dump-csv-report
+compile-one-brain-hsi-kernel-with-polly-isl-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/compile-one-brain-hsi-kernel-with-polly-isl --enable-polly --enable-polly-polyhedral --polly-omp-opt --dump-csv-report
 
 
-transform-brain-hsi-kernels-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-polly --enable-polly --only-kernel-transformation --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+compile-brain-hsi-kernels-with-polly-isl-umbria-cpu-flow:
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/compile-brain-hsi-kernels-with-polly-isl --enable-polly --enable-polly-polyhedral --polly-omp-opt --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+
+
+
 

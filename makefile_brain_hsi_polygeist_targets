@@ -37,7 +37,7 @@ run-one-brain-hsi-kernel-with-polymer-polly-omp-opt-umbria-cpu-flow:
 
 
 run-brain-hsi-kernels-with-polymer-polly-omp-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polymer-polly-omp-opt --enable-polygeist --loop-transforms --clang-opt --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polymer-polly-omp-opt --enable-polygeist --loop-transforms --polly-omp-opt --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
 
 
 

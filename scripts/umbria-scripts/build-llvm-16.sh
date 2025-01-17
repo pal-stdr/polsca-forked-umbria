@@ -50,8 +50,28 @@ cmake   \
     -DLLVM_TARGETS_TO_BUILD="Native"
 
 
+# CUDA_PATH=/usr/local/cuda-11.4
+# CUDACXX=/usr/local/cuda-11.4
 
-cmake --build .
+# cmake   \
+#     -G Ninja    \
+#     -S "${LLVM_16_SRC_DIR}/llvm"  \
+#     -B .    \
+#     -DCMAKE_BUILD_TYPE=Release      \
+# 	-DCMAKE_INSTALL_PREFIX="${INSTALLATION_FOLDER_DIR}"  \
+#     -DLLVM_ENABLE_PROJECTS="mlir;clang;lld;lldb" \
+#     -DLLVM_INSTALL_UTILS=ON     \
+#     -DCMAKE_C_COMPILER=gcc    \
+#     -DCMAKE_CXX_COMPILER=g++    \
+# 	-DMLIR_ENABLE_CUDA_RUNNER=ON        \
+#     -DCUDA_TOOLKIT_ROOT_DIR=$CUDA_PATH    \
+# 	-DLLVM_TARGETS_TO_BUILD="Native;NVPTX"	\
+# 	-DLLVM_ENABLE_ASSERTIONS=ON
+
+
+
+
+cmake --build . --target check-mlir check-clang check-lld check-lldb
 
 # If you want to "install" to "${INSTALLATION_FOLDER_DIR}" dir (means, collecting the "include", "lib", and "bin" dirs to "${INSTALLATION_FOLDER_DIR}"), activate "ninja install".
 # ninja install

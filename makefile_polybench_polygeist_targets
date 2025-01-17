@@ -4,9 +4,10 @@ POLYBENCH_SRC_DIR=./example/polybench
 POLYBENCH_DATASET=SMALL
 
 # You can run multiple kernel examples; or just one kernel.
-POLYBENCH_POLYGEIST_EXAMPLES=symm syr2k trmm 2mm
+POLYBENCH_POLYGEIST_EXAMPLES=symm syr2k trmm 2mm correlation
 # EXCLUDE_POLYBENCH_POLYGEIST_KERNELS=symm doitgen fdtd-2d nussinov
-EXCLUDE_POLYBENCH_POLYGEIST_KERNELS=deriche correlation floyd-warshall nussinov
+# EXCLUDE_POLYBENCH_POLYGEIST_KERNELS=deriche correlation floyd-warshall nussinov
+EXCLUDE_POLYBENCH_POLYGEIST_KERNELS=deriche
 EXCLUDE_POLYBENCH_POLYGEIST_KERNELS_FOR_SCALEHLS_TRANSFORMATION=deriche correlation floyd-warshall nussinov
 
 
@@ -14,11 +15,11 @@ EXCLUDE_POLYBENCH_POLYGEIST_KERNELS_FOR_SCALEHLS_TRANSFORMATION=deriche correlat
 
 
 verify-one-polybench-kernel-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -p --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLYGEIST_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polymer --dataset=$(POLYBENCH_DATASET) --enable-polygeist --loop-transforms --polly-omp-opt  --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -p --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLYGEIST_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polymer --dataset=$(POLYBENCH_DATASET) --enable-polygeist --loop-transforms --polly-omp-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
 
 
 verify-polybench-kernels-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polymer --dataset=$(POLYBENCH_DATASET) --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLYGEIST_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polymer --dataset=$(POLYBENCH_DATASET) --enable-polygeist --loop-transforms --verify-benchmark-result --polly-omp-opt --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLYGEIST_KERNELS)
 
 
 
