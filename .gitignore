@@ -242,3 +242,7 @@ example/PolyBenchC-4.2.1-brain-HSI-without-path/
 example/PolyBenchC-4.2.1-brain-HSI-with-path/
 
 example/PolyBenchC-4.2.1-brain-HSI-with-path-v1/
+
+example/PolyBenchC-4.2.1-brain-HSI-with-path-and-file-dumper/
+
+example/PolyBenchC-4.2.1-brain-HSI-with-path-without-file-dumper/
