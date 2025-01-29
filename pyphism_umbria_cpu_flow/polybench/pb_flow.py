@@ -3214,6 +3214,7 @@ def process_pb_flow_result_dir(result_work_dir: str, options: PbFlowOptions):
                 0.00 if is_kernel_execution_error_found(each_kernel_dir) else
                 0.00 if is_kernel_result_verification_error_found(each_kernel_dir) else
                 0.00 if options.only_kernel_transformation else
+                0.00 if not options.run_bin_on_cpu and not options.verify_benchmark_result and not options.only_kernel_transformation else  # i.e. only compilation flow
                 fetch_kernel_execution_time(each_kernel_dir)
             ),
 

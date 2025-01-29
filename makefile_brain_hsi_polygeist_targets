@@ -1,71 +1,73 @@
-UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR=$(UMBRIA_CPU_FLOW_RELATIVE_TMP_DIR)/brain-hsi
-# UMBRIA_BRAIN_HSI_PYTHON_SCRIPT=scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py
-UMBRIA_BRAIN_HSI_PYTHON_SCRIPT=scripts/umbria-scripts/umbria-polybench-cpu-flow.py
-BRAIN_HSI_KERNELS_SRC_DIR=./example/PolyBenchC-4.2.1-brain-HSI-without-path
-# BRAIN_HSI_KERNELS_SRC_DIR=./example/PolyBenchC-4.2.1-brain-HSI-with-path
+UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR=$(UMBRIA_CPU_FLOW_RELATIVE_TMP_DIR)/brain-hsi
+# UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT=scripts/umbria-scripts/umbria-polybench-brain-hsi-cpu-flow.py
+UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT=scripts/umbria-scripts/umbria-polybench-cpu-flow.py
+# POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR=./example/PolyBenchC-4.2.1-brain-HSI-without-path
+# POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR=./example/PolyBenchC-4.2.1-brain-HSI-with-path
+POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR=./example/PolyBenchC-4.2.1-brain-HSI-with-path-and-file-dumper
+# POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR=./example/PolyBenchC-4.2.1-brain-HSI-with-path-without-file-dumper
+
 
 # You can run multiple kernel examples; or just one kernel.
-UMBRIA_BRAIN_HSI_EXAMPLES=calibration
-UMBRIA_BRAIN_HSI_KERNELS=calibration spectral_correction normalization svm_score probability_estimate gen_rgb_color_matrix brain_hsi
-EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS=brain_hsi
-
+POLYGEIST_BRAIN_HSI_EXAMPLES=calibration
+POLYGEIST_BRAIN_HSI_KERNELS=calibration spectral_correction normalization svm_score probability_estimate gen_rgb_color_matrix brain_hsi
+POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS=brain_hsi
 
 
 # With Polymer
 
 
 verify-one-brain-hsi-kernel-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
 
 
 verify-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 
 run-one-brain-hsi-kernel-with-polymer-no-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-with-polymer-no-opt --enable-polygeist --loop-transforms --run-bin-on-cpu --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-with-polymer-no-opt --enable-polygeist --loop-transforms --run-bin-on-cpu --dump-csv-report
 
 
 run-brain-hsi-kernels-with-polymer-no-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polymer-no-opt --enable-polygeist --loop-transforms --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polymer-no-opt --enable-polygeist --loop-transforms --run-bin-on-cpu --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 
 run-one-brain-hsi-kernel-with-polymer-polly-omp-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-with-polymer-polly-omp-opt --enable-polygeist --loop-transforms --polly-omp-opt --run-bin-on-cpu --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-with-polymer-polly-omp-opt --enable-polygeist --loop-transforms --polly-omp-opt --run-bin-on-cpu --dump-csv-report
 
 
 run-brain-hsi-kernels-with-polymer-polly-omp-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polymer-polly-omp-opt --enable-polygeist --loop-transforms --polly-omp-opt --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polymer-polly-omp-opt --enable-polygeist --loop-transforms --polly-omp-opt --run-bin-on-cpu --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 
 run-one-brain-hsi-kernel-with-polymer-clang-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-with-polymer-clang-opt --enable-polygeist --loop-transforms --clang-opt --run-bin-on-cpu --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-with-polymer-clang-opt --enable-polygeist --loop-transforms --clang-opt --run-bin-on-cpu --dump-csv-report
 
 
 run-brain-hsi-kernels-with-polymer-clang-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polymer-clang-opt --enable-polygeist --loop-transforms --clang-opt --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-with-polymer-clang-opt --enable-polygeist --loop-transforms --clang-opt --run-bin-on-cpu --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 
 
 compile-one-brain-hsi-kernel-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/compile-one-brain-hsi-kernel-with-polymer --enable-polygeist --loop-transforms --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/compile-one-brain-hsi-kernel-with-polymer --enable-polygeist --loop-transforms --dump-csv-report
 
 
 compile-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/compile-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/compile-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 
 transform-one-brain-hsi-kernel-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-polymer --enable-polygeist --loop-transforms --only-kernel-transformation --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-polymer --enable-polygeist --loop-transforms --only-kernel-transformation --dump-csv-report
 
 
 transform-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --only-kernel-transformation --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --only-kernel-transformation --dump-csv-report
 
 
 
@@ -75,11 +77,11 @@ transform-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
 
 
 transform-one-brain-hsi-kernel-with-polymer-scalehls-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-polymer-scalehls --enable-polygeist --loop-transforms --only-kernel-transformation --enable-scalehls --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-polymer-scalehls --enable-polygeist --loop-transforms --only-kernel-transformation --enable-scalehls --dump-csv-report
 
 
 transform-brain-hsi-kernels-with-polymer-scalehls-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-polymer-scalehls --enable-polygeist --loop-transforms --only-kernel-transformation --enable-scalehls --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-polymer-scalehls --enable-polygeist --loop-transforms --only-kernel-transformation --enable-scalehls --dump-csv-report
 
 
 
@@ -88,38 +90,38 @@ transform-brain-hsi-kernels-with-polymer-scalehls-umbria-cpu-flow:
 
 
 verify-one-brain-hsi-kernel-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernel --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernel --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001
 
 
 verify-brain-hsi-kernels-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 
 run-one-brain-hsi-kernel-no-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-no-opt --enable-polygeist --loop-transforms --run-bin-on-cpu --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-no-opt --enable-polygeist --loop-transforms --run-bin-on-cpu --dump-csv-report
 
 
 run-brain-hsi-kernels-no-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-no-opt --enable-polygeist --loop-transforms --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-no-opt --enable-polygeist --loop-transforms --run-bin-on-cpu --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 
 run-one-brain-hsi-kernel-clang-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-clang-opt --enable-polygeist --loop-transforms --clang-opt --run-bin-on-cpu --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-one-brain-hsi-kernel-clang-opt --enable-polygeist --loop-transforms --clang-opt --run-bin-on-cpu --dump-csv-report
 
 
 run-brain-hsi-kernels-clang-opt-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-clang-opt --enable-polygeist --loop-transforms --clang-opt --run-bin-on-cpu --dump-csv-report --excl $(EXCLUDE_UMBRIA_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/run-brain-hsi-kernels-clang-opt --enable-polygeist --loop-transforms --clang-opt --run-bin-on-cpu --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 
 transform-one-brain-hsi-kernel-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel --enable-polygeist --loop-transforms --only-kernel-transformation --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel --enable-polygeist --loop-transforms --only-kernel-transformation --dump-csv-report
 
 
 transform-brain-hsi-kernels-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels --enable-polygeist --loop-transforms --only-kernel-transformation --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels --enable-polygeist --loop-transforms --only-kernel-transformation --dump-csv-report
 
 
 
@@ -128,8 +130,8 @@ transform-brain-hsi-kernels-umbria-cpu-flow:
 
 
 transform-one-brain-hsi-kernel-with-scalehls-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) -e $(UMBRIA_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-scalehls --enable-polygeist --loop-transforms --only-kernel-transformation --enable-scalehls --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-one-brain-hsi-kernel-with-scalehls --enable-polygeist --loop-transforms --only-kernel-transformation --enable-scalehls --dump-csv-report
 
 
 transform-brain-hsi-kernels-with-scalehls-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(BRAIN_HSI_KERNELS_SRC_DIR) --examples $(UMBRIA_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-scalehls --enable-polygeist --loop-transforms --only-kernel-transformation --enable-scalehls --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/transform-brain-hsi-kernels-with-scalehls --enable-polygeist --loop-transforms --only-kernel-transformation --enable-scalehls --dump-csv-report
