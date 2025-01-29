@@ -362,16 +362,31 @@ class PbFlow():
         """Run the whole pb-flow on the src_file (*.c)."""
         self.options.key = os.path.basename(src_file).split(".")[0]
         # self.setup_cfg()
-        self.logger.info(self.options)
         self.cur_file = src_file
         self.c_source = src_file  # Will be useful in some later stages
 
         base_dir = os.path.dirname(src_file)
 
-        # Setup logging
+        # ==== Setup logger ===
+
         log_file = os.path.join(base_dir, f"pb-flow.log")
-        if os.path.isfile(log_file):
-            os.remove(log_file)
+
+        # To prevent the multiple writing of one kernel's log to other kernel log
+        # Remove existing handlers to prevent logs from being written to multiple files
+        # Iterate over self.logger.handlers[:]
+        for handler in self.logger.handlers[:]:  # Iterate over a copy of the list
+            if isinstance(handler, logging.FileHandler):
+
+                # Remove only FileHandler instances. Ensures that other handlers (like console handlers) are not removed.
+                self.logger.removeHandler(handler)
+
+                # This prevents file descriptor leaks.
+                handler.close()  # Properly close the handler
+        
+
+        # Buggy, removing logger file doesn't solve the problem of multiple writing same logs into different kernels
+        # if os.path.isfile(log_file):
+        #     os.remove(log_file)
 
         formatter = logging.Formatter(
             "[%(asctime)s][%(name)s][%(levelname)s] %(message)s"
@@ -380,6 +395,10 @@ class PbFlow():
         fh.setFormatter(formatter)
         fh.setLevel(logging.DEBUG)
         self.logger.addHandler(fh)
+
+        # Log the options as [INFO] into 'kernel_dir/pb-flow.log' immediately after setting up the logger.
+        self.logger.info(self.options)
+
 
         # The whole flow
         try:

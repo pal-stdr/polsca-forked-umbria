@@ -8,7 +8,7 @@ POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR=./example/PolyBenchC-4.2.1-brain-HSI-with-pa
 
 
 # You can run multiple kernel examples; or just one kernel.
-POLYGEIST_BRAIN_HSI_EXAMPLES=calibration
+POLYGEIST_BRAIN_HSI_EXAMPLES=calibration spectral_correction
 POLYGEIST_BRAIN_HSI_KERNELS=calibration spectral_correction normalization svm_score probability_estimate gen_rgb_color_matrix brain_hsi
 POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS=brain_hsi
 
