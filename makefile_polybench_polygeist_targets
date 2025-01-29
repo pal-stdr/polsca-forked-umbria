@@ -4,7 +4,8 @@ POLYBENCH_SRC_DIR=./example/polybench
 POLYBENCH_DATASET=SMALL
 
 # You can run multiple kernel examples; or just one kernel.
-POLYBENCH_POLYGEIST_EXAMPLES=symm syr2k trmm 2mm correlation
+POLYBENCH_POLYGEIST_EXAMPLES=symm syr2k trmm 2mm correlation nussinov
+# POLYBENCH_POLYGEIST_EXAMPLES=nussinov
 # EXCLUDE_POLYBENCH_POLYGEIST_KERNELS=symm doitgen fdtd-2d nussinov
 # EXCLUDE_POLYBENCH_POLYGEIST_KERNELS=deriche correlation floyd-warshall nussinov
 EXCLUDE_POLYBENCH_POLYGEIST_KERNELS=deriche

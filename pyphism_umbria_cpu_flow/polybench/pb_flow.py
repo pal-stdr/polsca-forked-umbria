@@ -1783,9 +1783,16 @@ class PbFlow():
 
         """
         This is a prerequisite transformation only intended for scalehls.
+        Since we have llvm/mlir version mismatch, that's why we have to do this.
+        We admit, this is ugly!!
+        read: https://discourse.llvm.org/t/how-to-transform-old-mlir-version-of-code-to-newest-other-version/83243
+        Current Scalehls uses llvm-16, in which the functions are expected in a func module. Also select ops are moved
+        inside arith dialect (i.e. "arith.select")
+        
 
 
         "func @kernel_kernel_name(..)" will be converted to "func.func @kernel_kernel_name(..)"
+        Any "%blabla = select blabla" will be converted to "%blabla = arith.select blabla"
         But all the other parts will be intact.
         """
 
@@ -1822,12 +1829,21 @@ class PbFlow():
             file.close()
         
 
+        # Convert 'func' to 'func.func'
         # Regex pattern to match (for "func")
-        pattern = r"^\s*func\b\s+(@\w+\()"  # Match 'func' at the start of a line followed by a function name
-
+        func_regex_pattern = r"^\s*func\b\s+(@\w+\()"  # Match 'func' at the start of a line followed by a function name
 
         # Replace 'func' with 'func.func'
-        updated_mlir_code = re.sub(pattern, r"func.func \1", mlir_code_file_content, flags=re.MULTILINE)
+        updated_mlir_code = re.sub(func_regex_pattern, r"func.func \1", mlir_code_file_content, flags=re.MULTILINE)
+
+
+        # Convert 'select' to 'arith.select'
+        # Regex pattern to match "select" but NOT "arith.select"
+        select_regex_pattern = r'(?<!arith\.)\bselect\b'
+
+        # Replace 'func' with 'func.func'
+        updated_mlir_code = re.sub(select_regex_pattern, 'arith.select', updated_mlir_code, flags=re.MULTILINE)
+
 
         # print(updated_mlir_code)
 
