@@ -14,11 +14,11 @@ POLLY_EXCLUDE_BRAIN_HSI_KERNELS=brain_hsi
 # Only --enable-polly flow
 
 verify-one-brain-hsi-kernel-with-polly-isl-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) --source-dir $(POLLY_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLLY_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernel-with-polly-isl --enable-polly --enable-polly-polyhedral --polly-omp-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) --source-dir $(POLLY_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLLY_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernel-with-polly-isl --enable-polly --enable-polly-polyhedral --polly-omp-opt --verify-benchmark-result --error-threshold 0.00000001 --dump-csv-report
 
 
 verify-brain-hsi-kernels-with-polly-isl-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLLY_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLLY_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels-with-polly-isl --enable-polly --enable-polly-polyhedral --clang-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(POLLY_EXCLUDE_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_BRAIN_HSI_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLLY_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLLY_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_BRAIN_HSI_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels-with-polly-isl --enable-polly --enable-polly-polyhedral --clang-opt --verify-benchmark-result --error-threshold 0.00000001 --dump-csv-report --excl $(POLLY_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 

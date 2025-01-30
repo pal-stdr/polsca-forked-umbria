@@ -1,6 +1,6 @@
 {
     "env": {
-        "LLVM_PROJECT_ROOT": "${workspaceFolder}/llvm-14-src-build-for-polygeist-polymer-polsca-installation",
+        "LLVM_PROJECT_ROOT": "${workspaceFolder}/llvm-14-src-build-for-polygeist-polymer-polsca",
         "myIncludePath": [
             "/usr/include",
             "/usr/include/x86_64-linux-gnu/c++/9"

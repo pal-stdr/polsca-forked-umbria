@@ -17,11 +17,11 @@ POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS=brain_hsi
 
 
 verify-one-brain-hsi-kernel-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernels-with-polymer --enable-polygeist --scop-decomposition --loop-transforms --verify-benchmark-result --polly-omp-opt --error-threshold 0.00000001 --dump-csv-report
 
 
 verify-brain-hsi-kernels-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels-with-polymer --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels-with-polymer --enable-polygeist --scop-decomposition --loop-transforms --verify-benchmark-result --polly-omp-opt --error-threshold 0.00000001 --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 
@@ -90,11 +90,11 @@ transform-brain-hsi-kernels-with-polymer-scalehls-umbria-cpu-flow:
 
 
 verify-one-brain-hsi-kernel-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernel --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) -e $(POLYGEIST_BRAIN_HSI_EXAMPLES) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-brain-hsi-kernel --enable-polygeist --scop-decomposition --loop-transforms --polly-omp-opt --verify-benchmark-result --error-threshold 0.00000001
 
 
 verify-brain-hsi-kernels-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYGEIST_BRAIN_HSI_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYGEIST_BRAIN_HSI_KERNELS_SRC_DIR) --examples $(POLYGEIST_BRAIN_HSI_KERNELS) --work-dir $(UMBRIA_POLYGEIST_BRAIN_HSI_CPU_FLOW_RELATIVE_TMP_DIR)/verify-brain-hsi-kernels --enable-polygeist --scop-decomposition --loop-transforms --verify-benchmark-result --polly-omp-opt --error-threshold 0.00000001 --dump-csv-report --excl $(POLYGEIST_EXCLUDE_BRAIN_HSI_KERNELS)
 
 
 

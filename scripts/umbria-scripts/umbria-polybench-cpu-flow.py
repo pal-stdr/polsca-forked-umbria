@@ -107,6 +107,12 @@ def main():
     )
 
     parser.add_argument(
+        "--scop-decomposition",
+        action="store_true",
+        help="Decompose the scop before pushing it to polymer. It is separated from '--loop-transforms' .Before it was automatically activated while '--loop-transforms' flag is true."
+    )
+
+    parser.add_argument(
         "--only-kernel-transformation",
         action="store_true",
         help="Only transform the kernel. No host"

@@ -1,10 +1,12 @@
 UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR=$(UMBRIA_CPU_FLOW_RELATIVE_TMP_DIR)/polybench
 UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT=scripts/umbria-scripts/umbria-polybench-cpu-flow.py
 POLYBENCH_SRC_DIR=./example/polybench
-POLYBENCH_DATASET=SMALL
+POLYBENCH_DATASET=LARGE
 
 # You can run multiple kernel examples; or just one kernel.
-POLYBENCH_POLYGEIST_EXAMPLES=symm syr2k trmm 2mm correlation nussinov
+# POLYBENCH_POLYGEIST_EXAMPLES=symm syr2k trmm 2mm correlation nussinov
+POLYBENCH_POLYGEIST_EXAMPLES=gemm 2mm 3mm
+# POLYBENCH_POLYGEIST_EXAMPLES=gemm
 # POLYBENCH_POLYGEIST_EXAMPLES=nussinov
 # EXCLUDE_POLYBENCH_POLYGEIST_KERNELS=symm doitgen fdtd-2d nussinov
 # EXCLUDE_POLYBENCH_POLYGEIST_KERNELS=deriche correlation floyd-warshall nussinov
@@ -16,11 +18,11 @@ EXCLUDE_POLYBENCH_POLYGEIST_KERNELS_FOR_SCALEHLS_TRANSFORMATION=deriche correlat
 
 
 verify-one-polybench-kernel-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -p --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLYGEIST_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polymer --dataset=$(POLYBENCH_DATASET) --enable-polygeist --loop-transforms --polly-omp-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -p --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLYGEIST_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polymer --dataset=$(POLYBENCH_DATASET) --enable-polygeist --scop-decomposition --loop-transforms --polly-omp-opt --verify-benchmark-result --error-threshold 0.00000001 --dump-csv-report
 
 
 verify-polybench-kernels-with-polymer-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polymer --dataset=$(POLYBENCH_DATASET) --enable-polygeist --loop-transforms --verify-benchmark-result --polly-omp-opt --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLYGEIST_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -j $(th) -p --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polymer --dataset=$(POLYBENCH_DATASET) --enable-polygeist --scop-decomposition --loop-transforms --verify-benchmark-result --polly-omp-opt --error-threshold 0.00000001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLYGEIST_KERNELS)
 
 
 
@@ -89,11 +91,11 @@ transform-polybench-kernels-with-polymer-scalehls-umbria-cpu-flow:
 
 
 verify-one-polybench-kernel-with-polygeist-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLYGEIST_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polygeist --dataset=$(POLYBENCH_DATASET) --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) --source-dir $(POLYBENCH_SRC_DIR) -e $(POLYBENCH_POLYGEIST_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polygeist --dataset=$(POLYBENCH_DATASET) --enable-polygeist --scop-decomposition --loop-transforms --verify-benchmark-result --error-threshold 0.00000001
 
 
 verify-polybench-kernels-with-polygeist-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polygeist --dataset=$(POLYBENCH_DATASET) --enable-polygeist --loop-transforms --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLYGEIST_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLYGEIST_PYTHON_SCRIPT) -j $(th) --source-dir $(POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLYGEIST_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polygeist --dataset=$(POLYBENCH_DATASET) --enable-polygeist --scop-decomposition --loop-transforms --verify-benchmark-result --error-threshold 0.00000001 --dump-csv-report --excl $(EXCLUDE_POLYBENCH_POLYGEIST_KERNELS)
 
 
 

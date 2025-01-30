@@ -42,6 +42,7 @@ class PhismRunnerOptions:
     enable_polygeist: bool = False # If True, then activate polygeist MLIR transformation chain
     enable_polly: bool = False # If True, then activate polly llvm transformation chain
     only_kernel_transformation: bool = False # If True, then there will be no "main()" in MLIR. Check also "extract_top_func_for_cpu()"
+    scop_decomposition: bool = False # Recommended to turn it off. Should be used only for verification purpose.
     enable_polly_polyhedral: bool = False # If True, then activate polly isl scheduling chain
     enable_scalehls: bool = False # If True, then activate scalehls transformation chain
     polly_omp_opt: bool = False # If True, then activate polly openmp chain

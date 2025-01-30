@@ -235,33 +235,19 @@ def get_phism_env():
     root_dir = get_project_root()
 
     phism_env = os.environ.copy()
-    # phism_env["PATH"] = ":".join(
-    #     [
-    #         os.path.join(root_dir, "polygeist", "llvm-project", "build", "bin"),
-    #         os.path.join(root_dir, "polygeist", "build", "mlir-clang"),
-    #         os.path.join(root_dir, "polymer", "build", "bin"),
-    #         os.path.join(root_dir, "build", "bin"),
-    #         phism_env["PATH"],
-    #     ]
-    # )
-    # phism_env["LD_LIBRARY_PATH"] = "{}:{}:{}:{}".format(
-    #     os.path.join(root_dir, "polygeist", "llvm-project", "build", "lib"),
-    #     os.path.join(root_dir, "polymer", "build", "pluto", "lib"),
-    #     os.path.join(root_dir, "build", "lib"),
-    #     phism_env["LD_LIBRARY_PATH"],
-    # )
+
 
     # Redefined by umbria
     phism_env["PATH"] = ":".join(
-    [
-        os.path.join(root_dir, "llvm-14-src-build-for-polygeist-polymer-polsca", "bin"),
-        os.path.join(root_dir, "polygeist-build-for-polsca", "mlir-clang"),
-        os.path.join(root_dir, "polymer-build-for-polsca", "bin"),
-        os.path.join(root_dir, "polsca-build", "bin"),
-        os.path.join(root_dir, "scalehls-build", "bin"),
-        os.path.join(root_dir, "papi-7-1-0-t-installation", "bin"),
-        phism_env["PATH"],
-    ]
+        [
+            os.path.join(root_dir, "llvm-14-src-build-for-polygeist-polymer-polsca", "bin"),
+            os.path.join(root_dir, "polygeist-build-for-polsca", "mlir-clang"),
+            os.path.join(root_dir, "polymer-build-for-polsca", "bin"),
+            os.path.join(root_dir, "polsca-build", "bin"),
+            os.path.join(root_dir, "scalehls-build", "bin"),
+            os.path.join(root_dir, "papi-7-1-0-t-installation", "bin"),
+            phism_env["PATH"],
+        ]
     )
     phism_env["LD_LIBRARY_PATH"] = "{}:{}:{}:{}:{}".format(
         os.path.join(root_dir, "llvm-14-src-build-for-polygeist-polymer-polsca", "lib"),
@@ -1112,7 +1098,7 @@ class PbFlow():
                         "14.0.0",
                         "include",
                     ),
-                    self.prep_clang_or_polly_omp_opt_flags_for_cpu(),
+                    # self.prep_clang_or_polly_omp_opt_flags_for_cpu(), DONOT USE IT HERE. IT CHANGES THE GOLDEN RESULT FOR gemm, 2mm, 3mm while using >MEDIUM dataset.
                     # (
                     #     "-O3" if self.options.clang_opt else 
                     #     "-O0 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -fno-tree-vectorize"  # add optimization flags
@@ -1513,7 +1499,8 @@ class PbFlow():
     def scop_decomposition_for_cpu(self):
         """Decompose the scop..
         
-        DONOT ACTIVATE IT IF YOU WANT TO MAKE THIS FLOW WORK. BECAUSE, IT DECOMPOSES THE SCOP INTO MULTIPLE CHUNKS OF FUNC, WHICH MAKE POLYMER GO HEYWIRE FOR LOT OF POLYBENCH KERNELS. A GOOD THING TO RESEARCH, WHY THIS HAPPENS.
+        IT DECOMPOSES THE SCOP INTO MULTIPLE CHUNKS OF FUNC, WHICH MAKE POLYMER GO HEYWIRE FOR LOT OF POLYBENCH KERNELS. A GOOD THING TO RESEARCH, WHY THIS HAPPENS.
+        Better do not use it with performance flow unless you are absolutely sure about the result verfication and performance improvement.
         """
 
         if self.options.enable_polly:
@@ -1525,14 +1512,14 @@ class PbFlow():
 
         if not self.options.enable_polygeist:
             self.logger.debug(
-                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-polygeist" flag is needed to activate this transformation function.'
             )
             return self
 
 
-        if self.options.loop_transforms is not True:
+        if not self.options.scop_decomposition:
             self.logger.debug(
-                f'To make "{inspect.currentframe().f_code.co_name}()" work, activate "--loop-transforms" flag.'
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--scop-decomposition" flag is not found. It decomposes the scop before pushing it to polymer. Before it was automatically activated while "--loop-transforms" flag is true.'
             )
             return self
 
@@ -1690,7 +1677,7 @@ class PbFlow():
 
 
         self.logger.debug(
-            f'"--loop-transforms" also activated the scop_decomposition_for_cpu() function.'
+            f'"--loop-transforms" donot activate the scop_decomposition_for_cpu() function. You have to use "--scop-decomposition" for that.'
         )
 
 
@@ -1930,14 +1917,14 @@ class PbFlow():
 
         if not self.options.enable_polygeist:
             self.logger.debug(
-                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-polygeist" flag is not found.'
             )
             return self
 
 
         if not self.options.enable_scalehls:
             self.logger.debug(
-                f'Use "--enable-scalehls" flag to activate "{inspect.currentframe().f_code.co_name}()" scalehls translation function.'
+                f'Skipped {inspect.currentframe().f_code.co_name}()", since "--enable-scalehls" flag not found.'
             )
             return self
         
@@ -1987,14 +1974,14 @@ class PbFlow():
 
         if not self.options.enable_polygeist:
             self.logger.debug(
-                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-polygeist" flag is not found.'
             )
             return self
 
 
         if not self.options.enable_scalehls:
             self.logger.debug(
-                f'Use "--enable-scalehls" flag to activate "{inspect.currentframe().f_code.co_name}()" scalehls translation function.'
+                f'Skipped {inspect.currentframe().f_code.co_name}()", since "--enable-scalehls" flag not found.'
             )
             return self
         
@@ -2037,14 +2024,14 @@ class PbFlow():
 
         if not self.options.enable_polygeist:
             self.logger.debug(
-                f'Use "--enable-polygeist" flag to activate "{inspect.currentframe().f_code.co_name}()" mlir transformation function.'
+                f'Skipped "{inspect.currentframe().f_code.co_name}()", since "--enable-polygeist" flag is not found.'
             )
             return self
 
 
         if not self.options.enable_scalehls:
             self.logger.debug(
-                f'Use "--enable-scalehls" flag to activate "{inspect.currentframe().f_code.co_name}()" scalehls translation function.'
+                f'Skipped {inspect.currentframe().f_code.co_name}()", since "--enable-scalehls" flag not found.'
             )
             return self
         
@@ -2517,7 +2504,7 @@ class PbFlow():
 
 
         # Prepare .diff file to be written
-        result_diff_file = result_out_file.replace(".out", ".diff")
+        result_diff_file = self.cur_file.replace(".exe", ".diff")
 
 
         # (Very important) Create the empty ".diff" file

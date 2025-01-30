@@ -14,11 +14,11 @@ POLLY_EXCLUDE_POLYBENCH_KERNELS_FOR_SCALEHLS_TRANSFORMATION=deriche correlation 
 # Only --enable-polly flow
 
 verify-one-polybench-kernel-with-polly-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) --source-dir $(POLLY_POLYBENCH_SRC_DIR) -e $(POLLY_POLYBENCH_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polly --dataset=$(POLLY_POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --polly-omp-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) --source-dir $(POLLY_POLYBENCH_SRC_DIR) -e $(POLLY_POLYBENCH_EXAMPLES) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-one-polybench-kernel-with-polly --dataset=$(POLLY_POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --polly-omp-opt --verify-benchmark-result --error-threshold 0.00000001 --dump-csv-report
 
 
 verify-polybench-kernels-with-polly-isl-umbria-cpu-flow:
-	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLLY_POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polly-isl --dataset=$(POLLY_POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --clang-opt --verify-benchmark-result --error-threshold 0.00001 --dump-csv-report --excl $(POLLY_EXCLUDE_POLYBENCH_KERNELS)
+	PYTHONPATH=$(shell pwd) python3 $(UMBRIA_POLYBENCH_POLLY_PYTHON_SCRIPT) -j $(th) --source-dir $(POLLY_POLYBENCH_SRC_DIR) --work-dir $(UMBRIA_POLYBENCH_POLLY_CPU_FLOW_RELATIVE_TMP_DIR)/verify-polybench-kernels-with-polly-isl --dataset=$(POLLY_POLYBENCH_DATASET) --enable-polly --enable-polly-polyhedral --clang-opt --verify-benchmark-result --error-threshold 0.00000001 --dump-csv-report --excl $(POLLY_EXCLUDE_POLYBENCH_KERNELS)
 
 
 
